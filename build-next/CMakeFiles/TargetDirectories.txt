@@ -1,0 +1,5 @@
+C:/Users/joaof/Desktop/code/cpp/IDE/build-next/CMakeFiles/CppVisualIDE.dir
+C:/Users/joaof/Desktop/code/cpp/IDE/build-next/CMakeFiles/edit_cache.dir
+C:/Users/joaof/Desktop/code/cpp/IDE/build-next/CMakeFiles/rebuild_cache.dir
+C:/Users/joaof/Desktop/code/cpp/IDE/build-next/CMakeFiles/CppVisualIDE_autogen_timestamp_deps.dir
+C:/Users/joaof/Desktop/code/cpp/IDE/build-next/CMakeFiles/CppVisualIDE_autogen.dir

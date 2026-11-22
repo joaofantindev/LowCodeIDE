@@ -24,6 +24,10 @@ qt_add_executable(CppVisualIDE WIN32
     src/Project.h
     src/CodeGenerator.cpp
     src/CodeGenerator.h
+    src/FormCanvas.cpp
+    src/FormCanvas.h
+    src/FormDesigner.cpp
+    src/FormDesigner.h
 )
 
 target_include_directories(CppVisualIDE PRIVATE src)

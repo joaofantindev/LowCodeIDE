@@ -2,6 +2,7 @@
 
 #include "CodeEditor.h"
 #include "CodeGenerator.h"
+#include "FormDesigner.h"
 #include "SyntaxHighlighter.h"
 
 #include <QAction>
@@ -175,6 +176,11 @@ void MainWindow::openProject()
     if (path.isEmpty()) {
         return;
     }
+    openProjectPath(path);
+}
+
+void MainWindow::openProjectPath(const QString &path)
+{
     QString error;
     const Project loaded = Project::load(path, &error);
     if (!error.isEmpty()) {
@@ -192,6 +198,20 @@ void MainWindow::loadProject(const Project &loaded)
 
     while (editorTabs->count() > 0) {
         editorTabs->removeTab(0);
+    }
+
+    if (!project.forms.isEmpty()) {
+        if (!designer) {
+            designer = new FormDesigner(editorTabs);
+            connect(designer, &FormDesigner::formChanged, this, [this](const FormModel &form) {
+                if (!project.forms.isEmpty()) {
+                    project.forms[0] = form;
+                }
+            });
+        }
+        designer->setForm(project.forms.first());
+        editorTabs->insertTab(0, designer, QStringLiteral("Designer"));
+        editorTabs->setCurrentIndex(0);
     }
 
     const QStringList initialFiles{

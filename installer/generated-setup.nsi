@@ -12,7 +12,7 @@ SetCompressor /SOLID lzma
 ShowInstDetails show
 ShowUnInstDetails show
 
-!define APP_VERSION "0.1.0"
+!define APP_VERSION "0.2.0"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\CppVisualIDE.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir a C++ Visual IDE agora"

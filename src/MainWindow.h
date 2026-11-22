@@ -5,6 +5,7 @@
 #include <QMainWindow>
 
 class QDockWidget;
+class FormDesigner;
 class QPlainTextEdit;
 class QTabWidget;
 class QTreeWidget;
@@ -16,6 +17,8 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
+
+    void openProjectPath(const QString &path);
 
 private slots:
     void newProject();
@@ -37,6 +40,7 @@ private:
     QString findExecutable(const QString &name) const;
 
     Project project;
+    FormDesigner *designer = nullptr;
     QTabWidget *editorTabs = nullptr;
     QTreeWidget *projectTree = nullptr;
     QPlainTextEdit *outputView = nullptr;
