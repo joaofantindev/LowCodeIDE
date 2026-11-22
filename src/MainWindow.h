@@ -42,6 +42,7 @@ private slots:
     void toggleDarkTheme(bool enabled);
     void editInterface();
     void onUiFileChanged(const QString &path);
+    void cancelBuild();
 
 private:
     void setupUi();
@@ -51,6 +52,8 @@ private:
     void openDocument(const QString &filePath);
     void appendOutput(const QString &text);
     void appendTerminal(const QString &text);
+    void appendBuildOutput(const QString &text);
+    void finishBuild(bool success);
     QString findExecutable(const QString &name) const;
     void syncUiWatcher();
     void reloadUiFromDisk(const QString &path);
@@ -59,12 +62,18 @@ private:
     FormDesigner *designer = nullptr;
     LspClient *lsp = nullptr;
     QProcess *runProcess = nullptr;
+    QProcess *buildProcess = nullptr;
     QTabWidget *editorTabs = nullptr;
     QTabWidget *outputTabs = nullptr;
     QTreeWidget *projectTree = nullptr;
     QPlainTextEdit *outputView = nullptr;
     QPlainTextEdit *terminalView = nullptr;
+    QPlainTextEdit *buildView = nullptr;
     QDockWidget *outputDock = nullptr;
+    bool runAfterBuild = false;
+    bool buildCancelled = false;
+    bool buildHadCompileCommands = false;
+    int buildPhase = 0; // 0 = parado, 1 = cmake -S, 2 = cmake --build
     QFileSystemWatcher *uiWatcher = nullptr;
     QHash<QString, QByteArray> uiHashes;
 };

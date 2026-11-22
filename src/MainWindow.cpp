@@ -73,8 +73,13 @@ void MainWindow::setupUi()
     terminalView->setReadOnly(true);
     terminalView->setMaximumBlockCount(5000);
     terminalView->setFont(QFont(QStringLiteral("Consolas"), 10));
+    buildView = new QPlainTextEdit(outputTabs);
+    buildView->setReadOnly(true);
+    buildView->setMaximumBlockCount(5000);
+    buildView->setFont(QFont(QStringLiteral("Consolas"), 10));
     outputTabs->addTab(outputView, QStringLiteral("Saída"));
     outputTabs->addTab(terminalView, QStringLiteral("Terminal"));
+    outputTabs->addTab(buildView, QStringLiteral("Build"));
     outputDock->setWidget(outputTabs);
     addDockWidget(Qt::BottomDockWidgetArea, outputDock);
 
@@ -116,6 +121,10 @@ void MainWindow::setupUi()
     buildAction->setShortcut(QKeySequence(QStringLiteral("F7")));
     connect(buildAction, &QAction::triggered, this, &MainWindow::buildProject);
     projectToolbar->addAction(buildAction);
+
+    QAction *cancelBuildAction = projectMenu->addAction(QStringLiteral("Cancelar &build"));
+    cancelBuildAction->setShortcut(QKeySequence(QStringLiteral("Shift+F7")));
+    connect(cancelBuildAction, &QAction::triggered, this, &MainWindow::cancelBuild);
 
     QAction *runAction = projectMenu->addAction(QStringLiteral("&Executar"));
     runAction->setShortcut(QKeySequence(QStringLiteral("F5")));
@@ -164,6 +173,16 @@ void MainWindow::appendTerminal(const QString &text)
     }
     outputDock->show();
     outputTabs->setCurrentWidget(terminalView);
+}
+
+void MainWindow::appendBuildOutput(const QString &text)
+{
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        if (!line.trimmed().isEmpty()) {
+            buildView->appendPlainText(line);
+        }
+    }
 }
 
 QString MainWindow::findExecutable(const QString &name) const
@@ -495,6 +514,10 @@ void MainWindow::regenerateCode()
 
 void MainWindow::buildProject()
 {
+    if (buildProcess && buildProcess->state() != QProcess::NotRunning) {
+        cancelBuild();
+        return;
+    }
     if (project.rootPath.isEmpty()) {
         appendOutput(QStringLiteral("Abra ou crie um projeto antes de compilar."));
         return;
@@ -506,7 +529,7 @@ void MainWindow::buildProject()
 
     const QString compileCommands = QDir(project.rootPath)
                                         .filePath(QStringLiteral("build/compile_commands.json"));
-    const bool hadCompileCommands = QFileInfo::exists(compileCommands);
+    buildHadCompileCommands = QFileInfo::exists(compileCommands);
 
     const QString cmake = findExecutable(QStringLiteral("cmake"));
     if (cmake.isEmpty()) {
@@ -527,41 +550,101 @@ void MainWindow::buildProject()
 #endif
 
     const QString buildDir = QDir(project.rootPath).filePath(QStringLiteral("build"));
-    auto run = [&](const QString &program, const QStringList &arguments) {
-        appendOutput(QStringLiteral("> %1 %2").arg(program, arguments.join(QLatin1Char(' '))));
-        QProcess process(this);
-        process.setProcessEnvironment(environment);
-        process.setWorkingDirectory(project.rootPath);
-        process.start(program, arguments);
-        if (!process.waitForStarted(10000)) {
-            appendOutput(QStringLiteral("Falha ao iniciar %1.").arg(program));
-            return false;
-        }
-        process.waitForFinished(300000);
-        const QString standardOutput = QString::fromLocal8Bit(process.readAllStandardOutput());
-        const QString standardError = QString::fromLocal8Bit(process.readAllStandardError());
-        if (!standardOutput.trimmed().isEmpty()) {
-            appendOutput(standardOutput.trimmed());
-        }
-        if (!standardError.trimmed().isEmpty()) {
-            appendOutput(standardError.trimmed());
-        }
-        const bool success = process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
-        appendOutput(success ? QStringLiteral("OK")
-                             : QStringLiteral("Falha (código %1).").arg(process.exitCode()));
-        return success;
-    };
+    if (buildProcess) {
+        buildProcess->deleteLater();
+        buildProcess = nullptr;
+    }
+    buildProcess = new QProcess(this);
+    buildProcess->setProcessEnvironment(environment);
+    buildProcess->setWorkingDirectory(project.rootPath);
 
-    if (!run(cmake, {QStringLiteral("-S"), project.rootPath, QStringLiteral("-B"), buildDir,
-                     QStringLiteral("-G"), QStringLiteral("Ninja")})) {
+    connect(buildProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+        appendBuildOutput(QString::fromLocal8Bit(buildProcess->readAllStandardOutput()));
+    });
+    connect(buildProcess, &QProcess::readyReadStandardError, this, [this]() {
+        appendBuildOutput(QString::fromLocal8Bit(buildProcess->readAllStandardError()));
+    });
+    connect(buildProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            appendBuildOutput(QStringLiteral("Falha ao iniciar o processo de build."));
+        }
+    });
+    connect(buildProcess, &QProcess::finished, this,
+            [this, cmake, buildDir](int exitCode, QProcess::ExitStatus status) {
+                const bool ok = status == QProcess::NormalExit && exitCode == 0;
+                if (buildCancelled) {
+                    finishBuild(false);
+                    return;
+                }
+                appendBuildOutput(ok ? QStringLiteral("[OK]")
+                                     : QStringLiteral("[Falha: código %1]").arg(exitCode));
+                if (buildPhase == 1 && ok) {
+                    buildPhase = 2;
+                    appendBuildOutput(QStringLiteral("> cmake --build %1").arg(buildDir));
+                    buildProcess->start(cmake, {QStringLiteral("--build"), buildDir});
+                    if (!buildProcess->waitForStarted(3000)) {
+                        appendBuildOutput(QStringLiteral("Falha ao iniciar cmake --build."));
+                        finishBuild(false);
+                    }
+                    return;
+                }
+                finishBuild(ok);
+            });
+
+    buildCancelled = false;
+    buildPhase = 1;
+    buildView->clear();
+    outputDock->show();
+    outputTabs->setCurrentWidget(buildView);
+    appendBuildOutput(QStringLiteral("> cmake -S %1 -B %2 -G Ninja").arg(project.rootPath, buildDir));
+    buildProcess->start(cmake, {QStringLiteral("-S"), project.rootPath, QStringLiteral("-B"),
+                                buildDir, QStringLiteral("-G"), QStringLiteral("Ninja")});
+    if (!buildProcess->waitForStarted(3000)) {
+        appendBuildOutput(QStringLiteral("Falha ao iniciar cmake."));
+        finishBuild(false);
         return;
     }
-    const bool built = run(cmake, {QStringLiteral("--build"), buildDir});
+    statusBar()->showMessage(QStringLiteral("Compilando... (F7 novamente ou Shift+F7 cancela)"));
+}
 
-    if (built && !hadCompileCommands && QFileInfo::exists(compileCommands) && lsp) {
-        appendOutput(QStringLiteral("compile_commands.json detectado; reiniciando clangd."));
-        lsp->start(project.rootPath);
+void MainWindow::finishBuild(bool success)
+{
+    const bool cancelled = buildCancelled;
+    const bool shouldRun = runAfterBuild && success && !cancelled;
+    buildCancelled = false;
+    runAfterBuild = false;
+    buildPhase = 0;
+
+    if (!cancelled) {
+        appendBuildOutput(success ? QStringLiteral("Compilação concluída.")
+                                  : QStringLiteral("Compilação falhou."));
+        statusBar()->showMessage(success ? QStringLiteral("Compilação concluída.")
+                                         : QStringLiteral("Compilação falhou."), 4000);
+    } else {
+        statusBar()->showMessage(QStringLiteral("Compilação cancelada."), 3000);
     }
+
+    if (success && !cancelled && !buildHadCompileCommands && lsp) {
+        const QString compileCommands = QDir(project.rootPath)
+                                            .filePath(QStringLiteral("build/compile_commands.json"));
+        if (QFileInfo::exists(compileCommands)) {
+            appendOutput(QStringLiteral("compile_commands.json detectado; reiniciando clangd."));
+            lsp->start(project.rootPath);
+        }
+    }
+    if (shouldRun) {
+        runProject();
+    }
+}
+
+void MainWindow::cancelBuild()
+{
+    if (!buildProcess || buildProcess->state() == QProcess::NotRunning) {
+        return;
+    }
+    buildCancelled = true;
+    appendBuildOutput(QStringLiteral("[cancelando...]"));
+    buildProcess->kill();
 }
 
 void MainWindow::runProject()
@@ -581,10 +664,10 @@ void MainWindow::runProject()
 
     if (!QFileInfo::exists(executable)) {
         appendOutput(QStringLiteral("Executável não encontrado. Compilando antes de executar..."));
-        buildProject();
-    }
-    if (!QFileInfo::exists(executable)) {
-        appendOutput(QStringLiteral("Não foi possível compilar o projeto. Verifique a saída."));
+        runAfterBuild = true;
+        if (!buildProcess || buildProcess->state() == QProcess::NotRunning) {
+            buildProject();
+        }
         return;
     }
 
