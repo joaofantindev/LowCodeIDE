@@ -12,7 +12,7 @@ SetCompressor /SOLID lzma
 ShowInstDetails show
 ShowUnInstDetails show
 
-!define APP_VERSION "0.2.0"
+!define APP_VERSION "0.4.0"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\CppVisualIDE.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir a C++ Visual IDE agora"
@@ -64,10 +64,17 @@ Section "C++ Visual IDE (obrigatÃ³rio)" SEC_MAIN
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\libz-1.dll"
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\libzstd.dll"
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\Qt6Core.dll"
+    File "C:\Users\joaof\Desktop\code\cpp\IDE\build\Qt6Designer.dll"
+    File "C:\Users\joaof\Desktop\code\cpp\IDE\build\Qt6DesignerComponents.dll"
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\Qt6Gui.dll"
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\Qt6Network.dll"
+    File "C:\Users\joaof\Desktop\code\cpp\IDE\build\Qt6OpenGL.dll"
+    File "C:\Users\joaof\Desktop\code\cpp\IDE\build\Qt6OpenGLWidgets.dll"
+    File "C:\Users\joaof\Desktop\code\cpp\IDE\build\Qt6PrintSupport.dll"
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\Qt6Widgets.dll"
+    File "C:\Users\joaof\Desktop\code\cpp\IDE\build\Qt6Xml.dll"
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\zlib1.dll"
+    File "C:\Users\joaof\Desktop\code\cpp\IDE\build\designer.exe"
     SetOutPath "$INSTDIR\platforms"
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\platforms\*.*"
     SetOutPath "$INSTDIR\styles"
@@ -99,6 +106,7 @@ SectionEnd
 
 Section "Uninstall"
     Delete "$INSTDIR\CppVisualIDE.exe"
+    Delete "$INSTDIR\designer.exe"
     Delete "$INSTDIR\*.dll"
     Delete "$INSTDIR\uninstall.exe"
     RMDir /r "$INSTDIR\platforms"

@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string] $Executable
+    [string] $Executable,
+    [switch] $IncludeDesigner
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,8 +18,21 @@ if (-not (Test-Path -LiteralPath $mingwBin)) {
     throw "Pasta $mingwBin não encontrada."
 }
 
-$unixPath = '/c' + $exePath.Substring(2).Replace('\', '/')
-$command = 'export PATH=/mingw64/bin:$PATH; ldd ' + "'$unixPath'"
+$targets = @($exePath)
+if ($IncludeDesigner) {
+    $designer = Join-Path $mingwBin 'designer.exe'
+    if (Test-Path -LiteralPath $designer) {
+        $targets += $designer
+        Copy-Item -LiteralPath $designer -Destination (Join-Path $destination 'designer.exe') -Force
+    }
+}
+
+$unixTargets = @()
+foreach ($target in $targets) {
+    $unixTargets += '/c' + $target.Substring(2).Replace('\', '/')
+}
+$command = 'export PATH=/mingw64/bin:$PATH; ldd ' + ($unixTargets -join ' ') 
+
 $previousPreference = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
 $lddOutput = & $bash -lc $command 2>$null

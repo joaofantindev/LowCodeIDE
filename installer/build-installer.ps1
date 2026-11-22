@@ -41,6 +41,10 @@ $dllLines = @()
 foreach ($dll in (Get-ChildItem -LiteralPath $sourceDir -Filter '*.dll' -File)) {
     $dllLines += '    File "' + $dll.FullName + '"'
 }
+$designerExe = Join-Path $sourceDir 'designer.exe'
+if (Test-Path -LiteralPath $designerExe) {
+    $dllLines += '    File "' + $designerExe + '"'
+}
 
 $pluginLines = @()
 foreach ($pluginDir in @('platforms', 'styles', 'imageformats', 'generic', 'networkinformation', 'tls')) {

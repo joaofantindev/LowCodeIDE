@@ -65,10 +65,16 @@ struct ConnectionInfo {
     QString slot;
 };
 
+struct BindingInfo {
+    QString target;
+    QString setter;
+    QString expression;
+};
+
 struct GenContext {
     QStringList declarations;
     QStringList setupLines;
-    QStringList bindLines;
+    QVector<BindingInfo> bindings;
     QSet<QString> includes{QStringLiteral("QWidget")};
     QSet<QString> senderTypes;
     QSet<QString> slotNames;
@@ -131,7 +137,8 @@ void genNode(const WidgetNode &node, const QString &parentExpr,
         const QString line = QStringLiteral("%1->%2(%3);").arg(target, setter, expression);
         ctx.setupLines << line;
         if (bound) {
-            ctx.bindLines << line;
+            ctx.bindings.append({isRoot ? QStringLiteral("host") : node.objectName,
+                                 setter, expression});
         }
     }
 
@@ -153,37 +160,27 @@ void genNode(const WidgetNode &node, const QString &parentExpr,
     }
 }
 
-QString generateUiHeader(const FormModel &form, const GenContext &ctx)
+QString generateBindingsHeader(const FormModel &form, const GenContext &ctx)
 {
     QStringList lines;
     lines << QStringLiteral("#pragma once") << QStringLiteral("")
-          << QStringLiteral("#include <QWidget>");
-    QStringList includes = ctx.includes.values();
-    includes.removeAll(QStringLiteral("QWidget"));
-    includes.sort();
-    for (const QString &include : includes) {
-        lines << QStringLiteral("#include <%1>").arg(include);
+          << QStringLiteral("#include <QWidget>")
+          << QStringLiteral("#include \"app_vars.h\"")
+          << QStringLiteral("#include \"ui_%1.h\"").arg(form.name) << QStringLiteral("")
+          << QStringLiteral("inline void applyBindings(QWidget* host, Ui::%1* ui)").arg(form.name)
+          << QStringLiteral("{");
+    if (ctx.bindings.isEmpty()) {
+        lines << QStringLiteral("    Q_UNUSED(host);") << QStringLiteral("    Q_UNUSED(ui);");
     }
-    lines << QStringLiteral("#include \"app_vars.h\"") << QStringLiteral("")
-          << QStringLiteral("namespace Ui {")
-          << QStringLiteral("class %1 {").arg(form.name)
-          << QStringLiteral("public:")
-          << QStringLiteral("    QWidget* host = nullptr;");
-    for (const QString &declaration : ctx.declarations) {
-        lines << QStringLiteral("    ") + declaration;
+    for (const BindingInfo &binding : ctx.bindings) {
+        const QString object = binding.target == QStringLiteral("host")
+                                   ? binding.target
+                                   : QStringLiteral("ui->%1").arg(binding.target);
+        lines << QStringLiteral("    if (%1) {").arg(object)
+              << QStringLiteral("        %1->%2(%3);").arg(object, binding.setter, binding.expression)
+              << QStringLiteral("    }");
     }
-    lines << QStringLiteral("")
-          << QStringLiteral("    void setupUi(QWidget* h) {");
-    for (const QString &line : ctx.setupLines) {
-        lines << QStringLiteral("        ") + line;
-    }
-    lines << QStringLiteral("    }") << QStringLiteral("")
-          << QStringLiteral("    void applyBindings() {");
-    for (const QString &line : ctx.bindLines) {
-        lines << QStringLiteral("        ") + line;
-    }
-    lines << QStringLiteral("    }") << QStringLiteral("};")
-          << QStringLiteral("} // namespace Ui") << QStringLiteral("");
+    lines << QStringLiteral("}") << QStringLiteral("");
     return lines.join(QLatin1Char('\n'));
 }
 
@@ -301,7 +298,7 @@ QString generateFormHeader(const QString &formName, const GenContext &ctx)
     QStringList lines;
     lines << QStringLiteral("#pragma once") << QStringLiteral("")
           << QStringLiteral("#include <QWidget>")
-          << QStringLiteral("#include \"ui_%1.h\"").arg(formName.toLower())
+          << QStringLiteral("#include \"ui_%1.h\"").arg(formName)
           << QStringLiteral("")
           << QStringLiteral("class %1 : public QWidget").arg(formName)
           << QStringLiteral("{")
@@ -325,11 +322,22 @@ QString generateFormHeader(const QString &formName, const GenContext &ctx)
     return lines.join(QLatin1Char('\n'));
 }
 
+QString slotBody(const QString &formName, const QString &slot)
+{
+    return QStringLiteral("void %1::%2()\n{\n"
+                          "    // TODO: escreva aqui a lógica deste evento.\n"
+                          "    QMessageBox::information(this, QStringLiteral(\"%1\"),\n"
+                          "                            QStringLiteral(\"Evento gerado pela IDE.\"));\n"
+                          "}")
+        .arg(formName, slot, formName);
+}
+
 QString generateFormSource(const QString &formName, const GenContext &ctx)
 {
     QStringList lines;
     lines << QStringLiteral("#include \"%1.h\"").arg(formName) << QStringLiteral("")
-          << QStringLiteral("#include <QMessageBox>");
+          << QStringLiteral("#include <QMessageBox>")
+          << QStringLiteral("#include \"bindings.h\"") << QStringLiteral("");
     QStringList senderTypes = ctx.senderTypes.values();
     senderTypes.sort();
     for (const QString &type : senderTypes) {
@@ -340,29 +348,104 @@ QString generateFormSource(const QString &formName, const GenContext &ctx)
           << QStringLiteral("    : QWidget(parent)")
           << QStringLiteral("{")
           << QStringLiteral("    ui.setupUi(this);")
-          << QStringLiteral("    // >> IDE: conexões geradas (não edite esta seção)");
-
-    for (const ConnectionInfo &connection : ctx.connections) {
-        lines << QStringLiteral("    connect(ui.%1, &%2::%3, this, &%4::%5);")
-                     .arg(connection.sender, connection.type, connection.signal, formName,
-                          connection.slot);
-    }
-    lines << QStringLiteral("    // << IDE: conexões geradas")
+          << QStringLiteral("    applyBindings(this, &ui);")
           << QStringLiteral("}");
 
     QStringList slotList = ctx.slotNames.values();
     slotList.sort();
     for (const QString &slot : slotList) {
-        lines << QStringLiteral("")
-              << QStringLiteral("void %1::%2()").arg(formName, slot)
-              << QStringLiteral("{")
-              << QStringLiteral("    // TODO: escreva aqui a lógica deste evento.")
-              << QStringLiteral("    QMessageBox::information(this, QStringLiteral(\"%1\"),").arg(formName)
-              << QStringLiteral("                            QStringLiteral(\"Evento gerado pela IDE.\"));")
-              << QStringLiteral("}");
+        lines << QStringLiteral("") << slotBody(formName, slot);
     }
     lines << QStringLiteral("");
     return lines.join(QLatin1Char('\n'));
+}
+
+bool writeGeneratedFile(const QString &path, const QString &content,
+                        GenerateResult &result, QString *error);
+
+bool readTextFile(const QString &path, QString *content, QString *error)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if (error) {
+            *error = QStringLiteral("Não foi possível ler %1: %2").arg(path, file.errorString());
+        }
+        return false;
+    }
+    *content = QString::fromUtf8(file.readAll());
+    return true;
+}
+
+// Mantém o código escrito pelo usuário e acrescenta apenas o que é novo.
+bool patchFormFiles(const QString &headerPath, const QString &sourcePath,
+                    const QString &formName, const GenContext &ctx,
+                    GenerateResult &result, QString *error)
+{
+    QString header;
+    if (!readTextFile(headerPath, &header, error)) {
+        return false;
+    }
+    QString source;
+    if (!readTextFile(sourcePath, &source, error)) {
+        return false;
+    }
+
+    QStringList slotList = ctx.slotNames.values();
+    slotList.sort();
+    QStringList newDeclarations;
+    for (const QString &slot : slotList) {
+        if (!header.contains(QStringLiteral("void %1(").arg(slot))) {
+            newDeclarations << QStringLiteral("    void %1();").arg(slot);
+        }
+    }
+    if (!newDeclarations.isEmpty()) {
+        const QString marker = QStringLiteral("// >> IDE: slots gerados");
+        if (header.contains(marker)) {
+            header.replace(marker, marker + QLatin1Char('\n') + newDeclarations.join(QLatin1Char('\n')));
+        } else if (header.contains(QStringLiteral("private slots:"))) {
+            header.replace(QStringLiteral("private slots:"),
+                           QStringLiteral("private slots:\n") + newDeclarations.join(QLatin1Char('\n')));
+        } else {
+            const int end = header.lastIndexOf(QStringLiteral("};"));
+            if (end < 0) {
+                if (error) {
+                    *error = QStringLiteral("Não foi possível localizar o fim da classe em %1.")
+                                 .arg(headerPath);
+                }
+                return false;
+            }
+            header.insert(end, newDeclarations.join(QLatin1Char('\n')) + QLatin1Char('\n'));
+        }
+    }
+
+    // Conexões agora são geradas pelo uic a partir do .ui; remove as antigas.
+    const QString begin = QStringLiteral("    // >> IDE: conexões geradas (não edite esta seção)");
+    const QString end = QStringLiteral("    // << IDE: conexões geradas");
+    const int beginIndex = source.indexOf(begin);
+    if (beginIndex >= 0) {
+        const int endIndex = source.indexOf(end, beginIndex);
+        if (endIndex >= 0) {
+            source.remove(beginIndex, endIndex + end.length() - beginIndex);
+        }
+    }
+    if (!source.contains(QStringLiteral("applyBindings(this, &ui);"))) {
+        source.replace(QStringLiteral("    ui.setupUi(this);"),
+                       QStringLiteral("    ui.setupUi(this);\n    applyBindings(this, &ui);"));
+    }
+    if (!source.contains(QStringLiteral("#include \"bindings.h\""))) {
+        source.prepend(QStringLiteral("#include \"bindings.h\"\n"));
+    }
+    for (const QString &slot : slotList) {
+        if (source.contains(QStringLiteral("void %1::%2(").arg(formName, slot))) {
+            continue;
+        }
+        source += QStringLiteral("\n\n") + slotBody(formName, slot);
+    }
+
+    if (!writeGeneratedFile(headerPath, header, result, error)) {
+        return false;
+    }
+    return writeGeneratedFile(sourcePath, source, result, error);
 }
 
 QString generateDeployScript()
@@ -412,7 +495,7 @@ Write-Host "Dependências MinGW copiadas: $($dllNames.Count) DLL(s)."
 )PS1");
 }
 
-QString generateCMake(const Project &project)
+QString generateCMake(const Project &project, const QString &formName)
 {
     const QString target = project.name.trimmed().replace(QLatin1Char(' '), QLatin1Char('_'));
     QStringList lines;
@@ -423,6 +506,8 @@ QString generateCMake(const Project &project)
           << QStringLiteral("set(CMAKE_CXX_STANDARD 20)")
           << QStringLiteral("set(CMAKE_CXX_STANDARD_REQUIRED ON)")
           << QStringLiteral("set(CMAKE_AUTOMOC ON)")
+          << QStringLiteral("set(CMAKE_AUTOUIC ON)")
+          << QStringLiteral("set(CMAKE_AUTOUIC_SEARCH_PATHS forms)")
           << QStringLiteral("set(CMAKE_EXPORT_COMPILE_COMMANDS ON)")
           << QStringLiteral("")
           << QStringLiteral("find_package(Qt6 REQUIRED COMPONENTS Widgets)")
@@ -431,7 +516,8 @@ QString generateCMake(const Project &project)
           << QStringLiteral("    src/main.cpp")
           << QStringLiteral("    src/MainWindow.cpp")
           << QStringLiteral("    src/MainWindow.h")
-          << QStringLiteral("    generated/ui_mainwindow.h")
+          << QStringLiteral("    forms/%1.ui").arg(formName)
+          << QStringLiteral("    generated/bindings.h")
           << QStringLiteral("    generated/app_vars.cpp")
           << QStringLiteral("    generated/app_vars.h")
           << QStringLiteral(")")
@@ -514,12 +600,11 @@ GenerateResult CodeGenerator::generateAll(const Project &project, bool overwrite
         return writeGeneratedFile(root.filePath(relative), content, result, &result.error);
     };
 
-    if (!write(QStringLiteral("generated/ui_%1.h").arg(form.name.toLower()),
-               generateUiHeader(form, ctx))
+    if (!write(QStringLiteral("generated/bindings.h"), generateBindingsHeader(form, ctx))
         || !write(QStringLiteral("generated/app_vars.h"), generateVarsHeader(project))
         || !write(QStringLiteral("generated/app_vars.cpp"), generateVarsSource(project))
         || !write(QStringLiteral("tools/deploy-runtime.ps1"), generateDeployScript())
-        || !write(QStringLiteral("CMakeLists.txt"), generateCMake(project))) {
+        || !write(QStringLiteral("CMakeLists.txt"), generateCMake(project, form.name))) {
         return result;
     }
 
@@ -539,6 +624,10 @@ GenerateResult CodeGenerator::generateAll(const Project &project, bool overwrite
         if (!write(formSource, generateFormSource(form.name, ctx))) {
             return result;
         }
+    }
+    if (!patchFormFiles(root.filePath(formHeader), root.filePath(formSource),
+                        form.name, ctx, result, &result.error)) {
+        return result;
     }
 
     QJsonObject varsJson;

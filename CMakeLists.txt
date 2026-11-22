@@ -28,6 +28,10 @@ qt_add_executable(CppVisualIDE WIN32
     src/FormCanvas.h
     src/FormDesigner.cpp
     src/FormDesigner.h
+    src/LspClient.cpp
+    src/LspClient.h
+    src/UiForm.cpp
+    src/UiForm.h
 )
 
 target_include_directories(CppVisualIDE PRIVATE src)
@@ -48,7 +52,7 @@ if(WIN32)
                 "$<TARGET_FILE:CppVisualIDE>"
         COMMAND "${POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass
                 -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/deploy-runtime.ps1"
-                "$<TARGET_FILE:CppVisualIDE>"
+                "$<TARGET_FILE:CppVisualIDE>" -IncludeDesigner
         COMMENT "Copiando DLLs do Qt e dependências do MinGW..."
         VERBATIM
     )

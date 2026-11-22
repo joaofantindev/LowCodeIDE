@@ -1,8 +1,17 @@
 #include "CodeEditor.h"
 
+#include <QAbstractItemView>
+#include <QColor>
+#include <QCompleter>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QResizeEvent>
+#include <QRegularExpression>
+#include <QStringListModel>
 #include <QTextBlock>
+#include <QTextCursor>
+#include <QTimer>
 #include <QWidget>
 
 namespace {
@@ -34,12 +43,187 @@ CodeEditor::CodeEditor(QWidget *parent)
 {
     lineNumberArea = new LineNumberArea(this);
 
+    completionModel = new QStringListModel(this);
+    completer = new QCompleter(this);
+    completer->setModel(completionModel);
+    completer->setWidget(this);
+    completer->setCompletionMode(QCompleter::PopupCompletion);
+    completer->setCaseSensitivity(Qt::CaseInsensitive);
+    connect(completer, static_cast<void (QCompleter:: *)(const QString &)>(&QCompleter::activated),
+            this, &CodeEditor::insertCompletion);
+
+    hoverTimer = new QTimer(this);
+    hoverTimer->setSingleShot(true);
+    hoverTimer->setInterval(450);
+    connect(hoverTimer, &QTimer::timeout, this, &CodeEditor::emitHoverRequest);
+
     connect(this, &QPlainTextEdit::blockCountChanged, this, &CodeEditor::updateLineNumberAreaWidth);
     connect(this, &QPlainTextEdit::updateRequest, this, &CodeEditor::updateLineNumberArea);
     connect(this, &QPlainTextEdit::cursorPositionChanged, this, &CodeEditor::highlightCurrentLine);
+    connect(this, &QPlainTextEdit::cursorPositionChanged, hoverTimer, &QTimer::stop);
 
     updateLineNumberAreaWidth(0);
     highlightCurrentLine();
+}
+
+void CodeEditor::setFilePath(const QString &filePath)
+{
+    currentFilePath = filePath;
+}
+
+QString CodeEditor::filePath() const
+{
+    return currentFilePath;
+}
+
+void CodeEditor::showCompletions(const QVector<LspCompletionItem> &items)
+{
+    if (items.isEmpty()) {
+        completer->popup()->hide();
+        return;
+    }
+
+    QStringList labels;
+    completionInsertTexts.clear();
+    for (const LspCompletionItem &item : items) {
+        labels.append(item.label);
+        completionInsertTexts.insert(item.label, item.insertText);
+    }
+    completionModel->setStringList(labels);
+
+    const QTextCursor cursor = textCursor();
+    const int start = wordStartPosition(cursor);
+    QTextCursor prefixCursor = cursor;
+    prefixCursor.setPosition(start);
+    prefixCursor.setPosition(cursor.position(), QTextCursor::KeepAnchor);
+    completer->setCompletionPrefix(prefixCursor.selectedText());
+    completer->popup()->setCurrentIndex(completionModel->index(0, 0));
+    completer->complete();
+}
+
+void CodeEditor::setDiagnostics(const QVector<LspDiagnostic> &diagnostics)
+{
+    this->diagnostics = diagnostics;
+    highlightCurrentLine();
+}
+
+QString CodeEditor::leadingWhitespace(const QString &line)
+{
+    int count = 0;
+    while (count < line.size() && (line.at(count) == QLatin1Char(' ') || line.at(count) == QLatin1Char('\t'))) {
+        ++count;
+    }
+    return line.left(count);
+}
+
+int CodeEditor::wordStartPosition(const QTextCursor &cursor) const
+{
+    int position = cursor.position();
+    while (position > 0) {
+        const QChar character = document()->characterAt(position - 1);
+        if (character.isLetterOrNumber() || character == QLatin1Char('_') || character == QLatin1Char(':')
+            || character == QLatin1Char('>') || character == QLatin1Char('~')) {
+            --position;
+        } else {
+            break;
+        }
+    }
+    return position;
+}
+
+void CodeEditor::insertCompletion(const QString &completion)
+{
+    QString insertText = completionInsertTexts.value(completion, completion);
+    insertText.replace(QRegularExpression(QStringLiteral("\\$\\{\\d+:([^}]*)\\}")), QStringLiteral("\\1"));
+    insertText.remove(QRegularExpression(QStringLiteral("\\$\\d+")));
+
+    QTextCursor cursor = textCursor();
+    const int start = wordStartPosition(cursor);
+    cursor.setPosition(start);
+    cursor.setPosition(textCursor().position(), QTextCursor::KeepAnchor);
+    cursor.insertText(insertText);
+    setTextCursor(cursor);
+}
+
+void CodeEditor::keyPressEvent(QKeyEvent *event)
+{
+    if (event->key() == Qt::Key_Space && event->modifiers() == Qt::ControlModifier) {
+        emit completionRequested();
+        return;
+    }
+
+    if (completer->popup()->isVisible()) {
+        switch (event->key()) {
+        case Qt::Key_Enter:
+        case Qt::Key_Return:
+        case Qt::Key_Escape:
+        case Qt::Key_Tab:
+        case Qt::Key_Backtab:
+            event->ignore();
+            return;
+        default:
+            break;
+        }
+    }
+
+    if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
+        && event->modifiers() == Qt::NoModifier && !textCursor().hasSelection()) {
+        const QString line = textCursor().block().text();
+        const QString trimmed = line.trimmed();
+        int indent = leadingWhitespace(line).size();
+        if (trimmed.endsWith(QLatin1Char('{')) || trimmed.endsWith(QLatin1Char(':'))
+            || trimmed.endsWith(QLatin1Char('('))) {
+            indent += 4;
+        }
+        if (trimmed.startsWith(QLatin1Char('}'))) {
+            indent = qMax(0, indent - 4);
+        }
+        insertPlainText(QStringLiteral("\n") + QString(indent, QLatin1Char(' ')));
+        return;
+    }
+
+    const QString typed = event->text();
+    if (typed.size() == 1 && !textCursor().hasSelection()
+        && event->modifiers() == Qt::NoModifier) {
+        const QChar character = typed.at(0);
+        const QChar closing = character == QLatin1Char('(') ? QLatin1Char(')')
+                              : character == QLatin1Char('[') ? QLatin1Char(']')
+                              : character == QLatin1Char('{') ? QLatin1Char('}')
+                              : character == QLatin1Char('"') ? QLatin1Char('"')
+                              : QChar();
+        if (!closing.isNull()) {
+            insertPlainText(typed + closing);
+            QTextCursor cursor = textCursor();
+            cursor.movePosition(QTextCursor::Left);
+            setTextCursor(cursor);
+            return;
+        }
+        if (character == QLatin1Char(')') || character == QLatin1Char(']')
+            || character == QLatin1Char('}') || character == QLatin1Char('"')) {
+            if (document()->characterAt(textCursor().position()) == character) {
+                QTextCursor cursor = textCursor();
+                cursor.movePosition(QTextCursor::Right);
+                setTextCursor(cursor);
+                return;
+            }
+        }
+    }
+
+    QPlainTextEdit::keyPressEvent(event);
+}
+
+void CodeEditor::mouseMoveEvent(QMouseEvent *event)
+{
+    QPlainTextEdit::mouseMoveEvent(event);
+    if (event->buttons() == Qt::NoButton && !completer->popup()->isVisible()) {
+        hoverTimer->start();
+    }
+}
+
+void CodeEditor::emitHoverRequest()
+{
+    hoverTimer->stop();
+    emit hoverRequested();
 }
 
 int CodeEditor::lineNumberAreaWidth() const
@@ -89,6 +273,29 @@ void CodeEditor::highlightCurrentLine()
         selection.cursor.clearSelection();
         selections.append(selection);
     }
+
+    for (const LspDiagnostic &diagnostic : diagnostics) {
+        QTextBlock block = document()->findBlockByNumber(diagnostic.line);
+        if (!block.isValid()) {
+            continue;
+        }
+        const int start = block.position() + qMin(diagnostic.character, block.length() - 1);
+        int end = diagnostic.endLine == diagnostic.line ? diagnostic.endCharacter : block.length() - 1;
+        end = qMin(qMax(end, diagnostic.character + 1), block.length() - 1);
+        if (end <= start) {
+            continue;
+        }
+        QTextCursor cursor(block);
+        cursor.setPosition(start);
+        cursor.setPosition(block.position() + end, QTextCursor::KeepAnchor);
+        QTextEdit::ExtraSelection selection;
+        selection.cursor = cursor;
+        selection.format.setUnderlineStyle(QTextCharFormat::SpellCheckUnderline);
+        selection.format.setUnderlineColor(QColor(QStringLiteral("#e06c75")));
+        selection.format.setToolTip(diagnostic.message);
+        selections.append(selection);
+    }
+
     setExtraSelections(selections);
 }
 

@@ -12,14 +12,21 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QFont>
 #include <QInputDialog>
+#include <QCursor>
+#include <QCryptographicHash>
 #include <QKeySequence>
 #include <QMenuBar>
+#include <QPalette>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QTextCursor>
+#include <QToolTip>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QStatusBar>
@@ -58,10 +65,17 @@ void MainWindow::setupUi()
 
     outputDock = new QDockWidget(QStringLiteral("Saída"), this);
     outputDock->setObjectName(QStringLiteral("outputDock"));
-    outputView = new QPlainTextEdit(outputDock);
+    outputTabs = new QTabWidget(outputDock);
+    outputView = new QPlainTextEdit(outputTabs);
     outputView->setReadOnly(true);
     outputView->setMaximumBlockCount(2000);
-    outputDock->setWidget(outputView);
+    terminalView = new QPlainTextEdit(outputTabs);
+    terminalView->setReadOnly(true);
+    terminalView->setMaximumBlockCount(5000);
+    terminalView->setFont(QFont(QStringLiteral("Consolas"), 10));
+    outputTabs->addTab(outputView, QStringLiteral("Saída"));
+    outputTabs->addTab(terminalView, QStringLiteral("Terminal"));
+    outputDock->setWidget(outputTabs);
     addDockWidget(Qt::BottomDockWidgetArea, outputDock);
 
     QToolBar *projectToolbar = addToolBar(QStringLiteral("Projeto"));
@@ -88,6 +102,11 @@ void MainWindow::setupUi()
 
     QMenu *projectMenu = menuBar()->addMenu(QStringLiteral("&Projeto"));
 
+    QAction *designerAction = projectMenu->addAction(QStringLiteral("&Editar interface (Qt Designer)"));
+    designerAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
+    connect(designerAction, &QAction::triggered, this, &MainWindow::editInterface);
+    projectToolbar->addAction(designerAction);
+
     QAction *generateAction = projectMenu->addAction(QStringLiteral("&Gerar código"));
     generateAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
     connect(generateAction, &QAction::triggered, this, &MainWindow::regenerateCode);
@@ -103,6 +122,25 @@ void MainWindow::setupUi()
     connect(runAction, &QAction::triggered, this, &MainWindow::runProject);
     projectToolbar->addAction(runAction);
 
+    QAction *stopAction = projectMenu->addAction(QStringLiteral("&Parar execução"));
+    stopAction->setShortcut(QKeySequence(QStringLiteral("Shift+F5")));
+    connect(stopAction, &QAction::triggered, this, &MainWindow::stopRun);
+    projectToolbar->addAction(stopAction);
+
+    QMenu *codeMenu = menuBar()->addMenu(QStringLiteral("&Código"));
+    QAction *completeAction = codeMenu->addAction(QStringLiteral("&Autocomplete"));
+    completeAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Space")));
+    connect(completeAction, &QAction::triggered, this, &MainWindow::requestCompletion);
+
+    QAction *definitionAction = codeMenu->addAction(QStringLiteral("&Ir para definição"));
+    definitionAction->setShortcut(QKeySequence(QStringLiteral("F2")));
+    connect(definitionAction, &QAction::triggered, this, &MainWindow::requestDefinition);
+
+    QMenu *viewMenu = menuBar()->addMenu(QStringLiteral("&Exibir"));
+    QAction *darkAction = viewMenu->addAction(QStringLiteral("Tema &escuro"));
+    darkAction->setCheckable(true);
+    connect(darkAction, &QAction::toggled, this, &MainWindow::toggleDarkTheme);
+
     statusBar()->showMessage(QStringLiteral("Pronto. Crie ou abra um projeto para começar."));
 }
 
@@ -111,6 +149,21 @@ void MainWindow::appendOutput(const QString &text)
     outputView->appendPlainText(text);
     outputDock->show();
     outputDock->raise();
+}
+
+void MainWindow::appendTerminal(const QString &text)
+{
+    QStringList lines = text.split(QLatin1Char('\n'));
+    if (lines.size() > 1 && lines.last().isEmpty()) {
+        lines.removeLast();
+    }
+    for (const QString &line : lines) {
+        if (!line.isEmpty()) {
+            terminalView->appendPlainText(line);
+        }
+    }
+    outputDock->show();
+    outputTabs->setCurrentWidget(terminalView);
 }
 
 QString MainWindow::findExecutable(const QString &name) const
@@ -196,6 +249,21 @@ void MainWindow::loadProject(const Project &loaded)
     project = loaded;
     refreshProjectTree();
 
+    if (!lsp) {
+        lsp = new LspClient(this);
+        connect(lsp, &LspClient::diagnosticsReady, this, &MainWindow::onDiagnostics);
+        connect(lsp, &LspClient::message, this,
+                [this](const QString &text) { appendOutput(QStringLiteral("[clangd] %1").arg(text)); });
+        connect(lsp, &LspClient::started, this, [this](bool ok) {
+            if (ok) {
+                reopenDocumentsInLsp();
+            }
+        });
+    }
+    if (!project.rootPath.isEmpty()) {
+        lsp->start(project.rootPath);
+    }
+
     while (editorTabs->count() > 0) {
         editorTabs->removeTab(0);
     }
@@ -214,20 +282,24 @@ void MainWindow::loadProject(const Project &loaded)
         editorTabs->setCurrentIndex(0);
     }
 
-    const QStringList initialFiles{
+    QStringList initialFiles{
         QStringLiteral("src/main.cpp"),
         QStringLiteral("src/MainWindow.cpp"),
         QStringLiteral("src/MainWindow.h"),
-        QStringLiteral("generated/ui_mainwindow.h"),
+        QStringLiteral("generated/bindings.h"),
         QStringLiteral("generated/app_vars.h"),
         QStringLiteral("project.json"),
     };
+    if (!project.forms.isEmpty()) {
+        initialFiles.prepend(QStringLiteral("forms/%1.ui").arg(project.forms.first().name));
+    }
     for (const QString &relative : initialFiles) {
         const QString path = QDir(project.rootPath).filePath(relative);
         if (QFileInfo::exists(path)) {
             openDocument(path);
         }
     }
+    syncUiWatcher();
     statusBar()->showMessage(QStringLiteral("Projeto: %1").arg(project.rootPath));
 }
 
@@ -291,10 +363,23 @@ void MainWindow::openDocument(const QString &filePath)
     const QByteArray content = file.readAll();
 
     auto *editor = new CodeEditor(editorTabs);
+    editor->setFilePath(filePath);
     editor->setFont(QFont(QStringLiteral("Consolas"), 10));
     editor->setPlainText(QString::fromUtf8(content));
     editor->document()->setModified(false);
     new SyntaxHighlighter(editor->document());
+
+    connect(editor, &CodeEditor::completionRequested, this, &MainWindow::requestCompletion);
+    connect(editor, &CodeEditor::definitionRequested, this, &MainWindow::requestDefinition);
+    connect(editor, &CodeEditor::hoverRequested, this, &MainWindow::requestHover);
+    connect(editor, &QPlainTextEdit::textChanged, this, [this, editor]() {
+        if (lsp && lsp->isInitialized() && !editor->filePath().isEmpty()) {
+            lsp->changeFile(editor->filePath(), editor->toPlainText());
+        }
+    });
+    if (lsp && lsp->isInitialized()) {
+        lsp->openFile(filePath, editor->toPlainText());
+    }
 
     const int index = editorTabs->addTab(editor, QFileInfo(filePath).fileName());
     editorTabs->tabBar()->setTabData(index, filePath);
@@ -321,6 +406,10 @@ void MainWindow::closeTab(int index)
                 file.commit();
             }
         }
+    }
+    const QString path = editorTabs->tabBar()->tabData(index).toString();
+    if (lsp && !path.isEmpty()) {
+        lsp->closeFile(path);
     }
     editorTabs->removeTab(index);
 }
@@ -349,6 +438,7 @@ void MainWindow::saveProject()
         if (!project.save(&error)) {
             appendOutput(error);
         } else {
+            syncUiWatcher();
             statusBar()->showMessage(QStringLiteral("Projeto salvo."), 3000);
         }
     }
@@ -359,6 +449,23 @@ void MainWindow::regenerateCode()
     if (project.rootPath.isEmpty() || project.forms.isEmpty()) {
         appendOutput(QStringLiteral("Abra ou crie um projeto antes de gerar código."));
         return;
+    }
+    bool needsMigration = false;
+    for (const FormModel &form : project.forms) {
+        const QString ui = QDir(project.rootPath)
+                               .filePath(QStringLiteral("forms/%1.ui").arg(form.name));
+        if (!QFileInfo::exists(ui)) {
+            needsMigration = true;
+        }
+    }
+    QString error;
+    if (!project.save(&error)) {
+        appendOutput(error);
+        return;
+    }
+    syncUiWatcher();
+    if (needsMigration) {
+        appendOutput(QStringLiteral("Formulários antigos migrados para .ui."));
     }
     const GenerateResult result = CodeGenerator::generateAll(project);
     if (!result.ok) {
@@ -392,6 +499,14 @@ void MainWindow::buildProject()
         appendOutput(QStringLiteral("Abra ou crie um projeto antes de compilar."));
         return;
     }
+
+    if (!project.forms.isEmpty()) {
+        regenerateCode();
+    }
+
+    const QString compileCommands = QDir(project.rootPath)
+                                        .filePath(QStringLiteral("build/compile_commands.json"));
+    const bool hadCompileCommands = QFileInfo::exists(compileCommands);
 
     const QString cmake = findExecutable(QStringLiteral("cmake"));
     if (cmake.isEmpty()) {
@@ -441,7 +556,12 @@ void MainWindow::buildProject()
                      QStringLiteral("-G"), QStringLiteral("Ninja")})) {
         return;
     }
-    run(cmake, {QStringLiteral("--build"), buildDir});
+    const bool built = run(cmake, {QStringLiteral("--build"), buildDir});
+
+    if (built && !hadCompileCommands && QFileInfo::exists(compileCommands) && lsp) {
+        appendOutput(QStringLiteral("compile_commands.json detectado; reiniciando clangd."));
+        lsp->start(project.rootPath);
+    }
 }
 
 void MainWindow::runProject()
@@ -449,6 +569,10 @@ void MainWindow::runProject()
     if (project.rootPath.isEmpty()) {
         appendOutput(QStringLiteral("Abra ou crie um projeto antes de executar."));
         return;
+    }
+
+    if (runProcess && runProcess->state() != QProcess::NotRunning) {
+        stopRun();
     }
 
     const QString target = project.name.trimmed().replace(QLatin1Char(' '), QLatin1Char('_'));
@@ -464,11 +588,300 @@ void MainWindow::runProject()
         return;
     }
 
+    terminalView->clear();
+    outputTabs->setCurrentWidget(terminalView);
     const QString workingDirectory = QFileInfo(executable).absolutePath();
-    appendOutput(QStringLiteral("Executando %1").arg(executable));
-    if (!QProcess::startDetached(executable, {}, workingDirectory)) {
-        appendOutput(QStringLiteral("Falha ao iniciar %1.").arg(executable));
+    appendTerminal(QStringLiteral("> %1").arg(executable));
+
+    runProcess = new QProcess(this);
+    runProcess->setWorkingDirectory(workingDirectory);
+    connect(runProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+        appendTerminal(QString::fromLocal8Bit(runProcess->readAllStandardOutput()));
+    });
+    connect(runProcess, &QProcess::readyReadStandardError, this, [this]() {
+        appendTerminal(QString::fromLocal8Bit(runProcess->readAllStandardError()));
+    });
+    connect(runProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
+        appendTerminal(status == QProcess::NormalExit
+                           ? QStringLiteral("[processo terminou com código %1]").arg(exitCode)
+                           : QStringLiteral("[processo foi encerrado]"));
+        statusBar()->showMessage(QStringLiteral("Execução finalizada."), 3000);
+    });
+    runProcess->start(executable, {});
+    if (!runProcess->waitForStarted(5000)) {
+        appendTerminal(QStringLiteral("Falha ao iniciar: %1").arg(runProcess->errorString()));
         return;
     }
-    statusBar()->showMessage(QStringLiteral("Aplicação iniciada."), 3000);
+    statusBar()->showMessage(QStringLiteral("Aplicação iniciada (Shift+F5 para parar)."), 3000);
+}
+
+void MainWindow::stopRun()
+{
+    if (!runProcess || runProcess->state() == QProcess::NotRunning) {
+        return;
+    }
+    appendTerminal(QStringLiteral("[encerrando...]"));
+    runProcess->terminate();
+    if (!runProcess->waitForFinished(1500)) {
+        runProcess->kill();
+        runProcess->waitForFinished(1000);
+    }
+}
+
+void MainWindow::requestCompletion()
+{
+    auto *editor = qobject_cast<CodeEditor *>(sender());
+    if (!editor) {
+        editor = qobject_cast<CodeEditor *>(editorTabs->currentWidget());
+    }
+    if (!editor || !lsp || !lsp->isInitialized()) {
+        statusBar()->showMessage(QStringLiteral("clangd ainda não está pronto."), 2000);
+        return;
+    }
+    const QTextCursor cursor = editor->textCursor();
+    QPointer<CodeEditor> target = editor;
+    lsp->requestCompletion(editor->filePath(), cursor.blockNumber(), cursor.positionInBlock(),
+                           [target](const QVector<LspCompletionItem> &items) {
+                               if (target) {
+                                   target->showCompletions(items);
+                               }
+                           });
+}
+
+void MainWindow::requestDefinition()
+{
+    auto *editor = qobject_cast<CodeEditor *>(sender());
+    if (!editor) {
+        editor = qobject_cast<CodeEditor *>(editorTabs->currentWidget());
+    }
+    if (!editor || !lsp || !lsp->isInitialized()) {
+        return;
+    }
+    const QTextCursor cursor = editor->textCursor();
+    lsp->requestDefinition(editor->filePath(), cursor.blockNumber(), cursor.positionInBlock(),
+                           [this](const LspLocation &location) {
+                               if (location.filePath.isEmpty()) {
+                                   statusBar()->showMessage(QStringLiteral("Definição não encontrada."), 2000);
+                                   return;
+                               }
+                               openDocument(location.filePath);
+                               auto *target = qobject_cast<CodeEditor *>(editorTabs->currentWidget());
+                               if (!target) {
+                                   return;
+                               }
+                               QTextBlock block = target->document()->findBlockByNumber(location.line);
+                               if (!block.isValid()) {
+                                   return;
+                               }
+                               QTextCursor cursor(block);
+                               cursor.setPosition(block.position()
+                                                  + qMin(location.character, block.length() - 1));
+                               target->setTextCursor(cursor);
+                               target->setFocus();
+                           });
+}
+
+void MainWindow::requestHover()
+{
+    auto *editor = qobject_cast<CodeEditor *>(sender());
+    if (!editor) {
+        editor = qobject_cast<CodeEditor *>(editorTabs->currentWidget());
+    }
+    if (!editor || !lsp || !lsp->isInitialized()) {
+        return;
+    }
+    const QPoint position = editor->mapFromGlobal(QCursor::pos());
+    const QTextCursor cursor = editor->cursorForPosition(position);
+    QPointer<CodeEditor> target = editor;
+    lsp->requestHover(editor->filePath(), cursor.blockNumber(), cursor.positionInBlock(),
+                      [target](const QString &text) {
+                          if (target && !text.isEmpty()) {
+                              const QString shortened = text.length() > 1200
+                                                            ? text.left(1200) + QStringLiteral("...")
+                                                            : text;
+                              QToolTip::showText(QCursor::pos(), shortened, target);
+                          }
+                      });
+}
+
+void MainWindow::onDiagnostics(const QString &filePath, const QVector<LspDiagnostic> &diagnostics)
+{
+    for (int i = 0; i < editorTabs->count(); ++i) {
+        auto *editor = qobject_cast<CodeEditor *>(editorTabs->widget(i));
+        if (editor && editor->filePath() == filePath) {
+            editor->setDiagnostics(diagnostics);
+            break;
+        }
+    }
+    if (!diagnostics.isEmpty()) {
+        int errors = 0;
+        for (const LspDiagnostic &diagnostic : diagnostics) {
+            if (diagnostic.severity <= 1) {
+                ++errors;
+            }
+        }
+        statusBar()->showMessage(QStringLiteral("%1: %2 problema(s), %3 erro(s)")
+                                     .arg(QFileInfo(filePath).fileName())
+                                     .arg(diagnostics.size())
+                                     .arg(errors),
+                                 4000);
+    }
+}
+
+void MainWindow::reopenDocumentsInLsp()
+{
+    if (!lsp) {
+        return;
+    }
+    for (int i = 0; i < editorTabs->count(); ++i) {
+        auto *editor = qobject_cast<CodeEditor *>(editorTabs->widget(i));
+        if (!editor || editor->filePath().isEmpty() || lsp->hasFile(editor->filePath())) {
+            continue;
+        }
+        lsp->openFile(editor->filePath(), editor->toPlainText());
+    }
+}
+
+void MainWindow::toggleDarkTheme(bool enabled)
+{
+    QPalette palette = QApplication::palette();
+    if (enabled) {
+        palette.setColor(QPalette::Window, QColor(0x1e, 0x1e, 0x1e));
+        palette.setColor(QPalette::WindowText, QColor(0xdd, 0xdd, 0xdd));
+        palette.setColor(QPalette::Base, QColor(0x28, 0x28, 0x28));
+        palette.setColor(QPalette::AlternateBase, QColor(0x33, 0x33, 0x33));
+        palette.setColor(QPalette::Text, QColor(0xdd, 0xdd, 0xdd));
+        palette.setColor(QPalette::Button, QColor(0x3a, 0x3a, 0x3a));
+        palette.setColor(QPalette::ButtonText, QColor(0xdd, 0xdd, 0xdd));
+        palette.setColor(QPalette::Highlight, QColor(0x2d, 0x7d, 0x9a));
+        palette.setColor(QPalette::HighlightedText, Qt::white);
+        palette.setColor(QPalette::Mid, QColor(0x88, 0x88, 0x88));
+    } else {
+        palette = QApplication::style()->standardPalette();
+    }
+    QApplication::setPalette(palette);
+}
+
+void MainWindow::syncUiWatcher()
+{
+    if (!uiWatcher) {
+        uiWatcher = new QFileSystemWatcher(this);
+        connect(uiWatcher, &QFileSystemWatcher::fileChanged, this, &MainWindow::onUiFileChanged);
+    }
+    QStringList paths;
+    if (!project.rootPath.isEmpty()) {
+        for (const FormModel &form : project.forms) {
+            paths << QDir(project.rootPath).filePath(QStringLiteral("forms/%1.ui").arg(form.name));
+        }
+    }
+    for (const QString &old : uiWatcher->files()) {
+        if (!paths.contains(old)) {
+            uiWatcher->removePath(old);
+            uiHashes.remove(old);
+        }
+    }
+    for (const QString &path : paths) {
+        if (!uiWatcher->files().contains(path) && QFileInfo::exists(path)) {
+            uiWatcher->addPath(path);
+        }
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly)) {
+            uiHashes.insert(path, QCryptographicHash::hash(file.readAll(),
+                                                           QCryptographicHash::Sha256));
+        }
+    }
+}
+
+void MainWindow::onUiFileChanged(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return;
+    }
+    const QByteArray content = file.readAll();
+    const QByteArray hash = QCryptographicHash::hash(content, QCryptographicHash::Sha256);
+    if (uiHashes.value(path) == hash) {
+        return;
+    }
+    uiHashes.insert(path, hash);
+    if (!uiWatcher->files().contains(path)) {
+        uiWatcher->addPath(path);
+    }
+    reloadUiFromDisk(path);
+}
+
+void MainWindow::reloadUiFromDisk(const QString &path)
+{
+    QString error;
+    const Project loaded = Project::load(project.projectFilePath(), &error);
+    if (!error.isEmpty()) {
+        appendOutput(QStringLiteral("Falha ao recarregar interface: %1").arg(error));
+        return;
+    }
+    project = loaded;
+    refreshProjectTree();
+
+    for (int i = 0; i < editorTabs->count(); ++i) {
+        const QString tabPath = editorTabs->tabBar()->tabData(i).toString();
+        if (tabPath != path) {
+            continue;
+        }
+        auto *editor = qobject_cast<CodeEditor *>(editorTabs->widget(i));
+        QFile file(path);
+        if (editor && file.open(QIODevice::ReadOnly)) {
+            editor->setPlainText(QString::fromUtf8(file.readAll()));
+            editor->document()->setModified(false);
+        }
+    }
+
+    if (designer && !project.forms.isEmpty()) {
+        designer->setForm(project.forms.first());
+    }
+    appendOutput(QStringLiteral("Interface recarregada do Qt Designer: %1")
+                     .arg(QFileInfo(path).fileName()));
+    regenerateCode();
+}
+
+void MainWindow::editInterface()
+{
+    if (project.rootPath.isEmpty() || project.forms.isEmpty()) {
+        appendOutput(QStringLiteral("Abra ou crie um projeto antes de editar a interface."));
+        return;
+    }
+    const QString path = QDir(project.rootPath)
+                             .filePath(QStringLiteral("forms/%1.ui").arg(project.forms.first().name));
+    if (!QFileInfo::exists(path)) {
+        QString error;
+        if (!project.save(&error)) {
+            appendOutput(error);
+            return;
+        }
+        syncUiWatcher();
+    }
+
+    QString designer = QDir(QCoreApplication::applicationDirPath())
+                           .filePath(QStringLiteral("designer.exe"));
+    if (!QFileInfo::exists(designer)) {
+        designer = findExecutable(QStringLiteral("designer"));
+    }
+#ifdef Q_OS_WIN
+    if (designer.isEmpty() || !QFileInfo::exists(designer)) {
+        const QString fallback = QStringLiteral("C:/msys64/mingw64/bin/designer.exe");
+        if (QFileInfo::exists(fallback)) {
+            designer = fallback;
+        }
+    }
+#endif
+    if (designer.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("Qt Designer"),
+                             QStringLiteral("Qt Designer não encontrado.\n"
+                                            "Instale com: pacman -S mingw-w64-x86_64-qt6-tools"));
+        return;
+    }
+    if (!QProcess::startDetached(designer, {path}, QFileInfo(designer).absolutePath())) {
+        appendOutput(QStringLiteral("Falha ao iniciar o Qt Designer."));
+        return;
+    }
+    appendOutput(QStringLiteral("Qt Designer aberto: %1").arg(path));
+    statusBar()->showMessage(QStringLiteral("Editando interface no Qt Designer..."), 4000);
 }
