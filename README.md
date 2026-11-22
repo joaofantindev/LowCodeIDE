@@ -9,9 +9,9 @@ IDE visual para C++ com Qt Widgets, no estilo Delphi/Lazarus. Este repositório 
 - [x] Variáveis de runtime (carregadas de `app.vars.json`, sem `constexpr`)
 - [x] Eventos gerados em região delimitada por marcadores (código do usuário preservado)
 - [x] Editor com numeração de linhas, destaque de linha atual e syntax highlight
-- [x] Árvore de projeto, salvamento, painel de saída e botão Compilar (CMake + Ninja)
+- [x] Árvore de projeto, salvamento, painel de saída, Compilar (F7) e Executar (F5)
+- [x] F2 (parcial): designer visual com paleta, drag & drop, canvas e inspetor de propriedades
 - [ ] F1: intellisense com clangd/LSP (autocomplete, hover, ir para definição, diagnósticos)
-- [ ] F2: designer visual com drag & drop e inspetor de propriedades
 - [ ] F3/F4: refinamento do build, undo/redo, múltiplos forms, temas
 
 ## Ambiente usado
@@ -60,10 +60,13 @@ O mesmo par de scripts é gerado dentro de cada projeto criado pela IDE (`tools/
 ## Como usar
 
 1. `Arquivo > Novo Projeto...` — escolha o nome e a pasta pai.
-2. A IDE cria a estrutura, gera o código e abre os arquivos principais.
-3. `Projeto > Gerar código` regera apenas os arquivos em `generated/` e os arquivos de configuração. Os arquivos em `src/` **não** são sobrescritos depois da criação.
-4. `Projeto > Compilar` (F7) executa CMake + Ninja e mostra a saída no painel inferior.
-5. Dê duplo clique num arquivo na árvore à esquerda para editá-lo; `Ctrl+S` salva.
+2. A IDE cria a estrutura, gera o código e abre os arquivos principais. A aba **Designer** aparece primeiro.
+3. No **Designer**: arraste um componente da paleta para o canvas (ou dê duplo clique nele). Clique no componente para selecioná-lo, edite propriedades no inspetor à direita e use `+ Evento clicked` para criar o slot. `Delete` remove o selecionado. Valores começando com `$` viram binding de runtime (ex.: `$alturaBotao`).
+4. `Projeto > Gerar código` (Ctrl+G) regera apenas os arquivos em `generated/` e os arquivos de configuração. Os arquivos em `src/` **não** são sobrescritos depois da criação.
+5. `Projeto > Compilar` (F7) executa CMake + Ninja e mostra a saída no painel inferior.
+6. `Projeto > Executar` (F5) inicia `build\<projeto>.exe` (compila antes, se necessário).
+7. Dê duplo clique num arquivo na árvore à esquerda para editá-lo; `Ctrl+S` salva.
+8. Também é possível abrir um projeto direto: `CppVisualIDE.exe "C:\caminho\project.json"`.
 
 ## Variáveis em runtime
 
