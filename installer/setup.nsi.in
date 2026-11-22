@@ -1,0 +1,79 @@
+; Instalador gráfico da C++ Visual IDE (NSIS + MUI2)
+; Gerado por installer/build-installer.ps1 — não edite diretamente.
+
+!include "MUI2.nsh"
+
+Name "C++ Visual IDE"
+OutFile "__OUT_FILE__"
+InstallDir "$LOCALAPPDATA\Programs\CppVisualIDE"
+InstallDirRegKey HKCU "Software\CppVisualIDE" "InstallDir"
+RequestExecutionLevel user
+SetCompressor /SOLID lzma
+ShowInstDetails show
+ShowUnInstDetails show
+
+!define APP_VERSION "__VERSION__"
+!define MUI_ABORTWARNING
+!define MUI_FINISHPAGE_RUN "$INSTDIR\CppVisualIDE.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "Abrir a C++ Visual IDE agora"
+
+VIProductVersion "0.1.0.0"
+VIAddVersionKey "ProductName" "C++ Visual IDE"
+VIAddVersionKey "ProductVersion" "${APP_VERSION}"
+VIAddVersionKey "FileVersion" "0.1.0.0"
+VIAddVersionKey "LegalCopyright" "C++ Visual IDE"
+VIAddVersionKey "FileDescription" "Instalador da C++ Visual IDE"
+
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_COMPONENTS
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+
+!insertmacro MUI_LANGUAGE "PortugueseBR"
+
+Section "C++ Visual IDE (obrigatório)" SEC_MAIN
+    SectionIn RO
+    SetOutPath "$INSTDIR"
+
+    File "__SOURCE_DIR__\CppVisualIDE.exe"
+__DLL_FILES__
+__PLUGIN_LINES__
+    SetOutPath "$INSTDIR"
+
+    WriteUninstaller "$INSTDIR\uninstall.exe"
+    WriteRegStr HKCU "Software\CppVisualIDE" "InstallDir" "$INSTDIR"
+    WriteRegStr HKCU "Software\CppVisualIDE" "Version" "${APP_VERSION}"
+SectionEnd
+
+Section "Atalho no Menu Iniciar" SEC_STARTMENU
+    CreateDirectory "$SMPROGRAMS\C++ Visual IDE"
+    CreateShortcut "$SMPROGRAMS\C++ Visual IDE\C++ Visual IDE.lnk" "$INSTDIR\CppVisualIDE.exe"
+    CreateShortcut "$SMPROGRAMS\C++ Visual IDE\Desinstalar.lnk" "$INSTDIR\uninstall.exe"
+SectionEnd
+
+Section "Atalho na Área de Trabalho" SEC_DESKTOP
+    CreateShortcut "$DESKTOP\C++ Visual IDE.lnk" "$INSTDIR\CppVisualIDE.exe"
+SectionEnd
+
+Section "Uninstall"
+    Delete "$INSTDIR\CppVisualIDE.exe"
+    Delete "$INSTDIR\*.dll"
+    Delete "$INSTDIR\uninstall.exe"
+    RMDir /r "$INSTDIR\platforms"
+    RMDir /r "$INSTDIR\styles"
+    RMDir /r "$INSTDIR\imageformats"
+    RMDir /r "$INSTDIR\generic"
+    RMDir /r "$INSTDIR\networkinformation"
+    RMDir /r "$INSTDIR\tls"
+    RMDir "$INSTDIR"
+
+    Delete "$SMPROGRAMS\C++ Visual IDE\C++ Visual IDE.lnk"
+    Delete "$SMPROGRAMS\C++ Visual IDE\Desinstalar.lnk"
+    RMDir "$SMPROGRAMS\C++ Visual IDE"
+    Delete "$DESKTOP\C++ Visual IDE.lnk"
+    DeleteRegKey HKCU "Software\CppVisualIDE"
+SectionEnd
