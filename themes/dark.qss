@@ -172,10 +172,8 @@ QPlainTextEdit {
     selection-background-color: #477CB8;
     selection-color: #F2E6D5;
 }
-/* O fundo do editor é o background_* escalonado para 100% do viewport
-   (definido em CodeEditor::refreshBackground) */
 QPlainTextEdit[editor="true"] {
-    background: transparent;
+    background: #242424;
     border: 1px solid #737887;
     border-radius: 5px;
     padding: 6px;
@@ -269,7 +267,7 @@ QScrollBar::sub-line {
 
 /* Tela inicial */
 QFrame#welcomePage {
-    border-image: url(:/images/bg_dark.png);
+    background: #242424;
 }
 QLabel#welcomeTitle {
     color: #F5AE24;

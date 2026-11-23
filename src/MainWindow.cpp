@@ -302,11 +302,6 @@ void MainWindow::applyTheme(bool dark)
     }
     QApplication::setPalette(palette);
     SyntaxHighlighter::setDarkTheme(dark);
-    for (int i = 0; i < editorTabs->count(); ++i) {
-        if (auto *editor = qobject_cast<CodeEditor *>(editorTabs->widget(i))) {
-            editor->refreshBackground();
-        }
-    }
 }
 
 void MainWindow::appendOutput(const QString &text)

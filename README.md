@@ -1,4 +1,8 @@
-# C++ Visual IDE
+<p align="center">
+  <img src="images/CppIDE_Assets/icon_monkey.png" alt="C++ Visual IDE" width="110">
+</p>
+
+<h1 align="center">C++ Visual IDE</h1>
 
 IDE visual para C++ com Qt Widgets, no estilo Delphi/Lazarus. Este repositório contém a **IDE**; os projetos criados por ela são gerados em pastas separadas.
 
@@ -13,7 +17,7 @@ IDE visual para C++ com Qt Widgets, no estilo Delphi/Lazarus. Este repositório 
 - [x] F1: clangd/LSP — autocomplete, hover, ir para definição (F2) e diagnósticos sublinhados
 - [x] Árvore de projeto, salvamento, painéis Saída/Terminal/Build, compilação **assíncrona** (F7, sem travar a UI), Cancelar build (Shift+F7), Executar (F5) e Parar (Shift+F5)
 - [x] Designer nativo (paleta, drag & drop, canvas e inspetor) como alternativa ao Qt Designer
-- [x] Temas claro/escuro com paleta QSS, ícones, imagens de fundo e tela de boas-vindas (menu `Exibir`)
+- [x] Temas claro/escuro com paleta QSS, ícones e tela de boas-vindas (menu `Exibir`)
 - [ ] F3/F4: múltiplos formulários com Nova Instância/Janela e navegação entre eles
 
 ## Ambiente usado
@@ -71,7 +75,7 @@ Os assets em `images\CppIDE_Assets\` são embutidos no executável por `resource
 - claro: fundo `#F2E6D5`, painéis `#E7D8C4`, cards `#FFF8EF`, texto `#292929`, acento `#E99A17`;
 - apoio: sucesso `#78B94A`, erro `#E5534B`, texto secundário `#B8B8B8`/`#71695F`, bordas `#737887`, detalhe rústico/mascote `#79513A`, seleção `#477CB8`.
 
-Os planos de fundo `background_*.png` aparecem na tela de boas-vindas e, escalonados para preencher 100% do viewport, no editor de código. A área de arquivos é preta com letras brancas nos dois temas. Menu/toolbar, árvore, abas e painéis usam os ícones do pacote. O `Exibir > Tema escuro` troca QSS, paleta Qt, fundo do editor e cores do syntax highlight juntos.
+A tela de boas-vindas e o editor usam cores sólidas da paleta, sem imagens de fundo. A área de arquivos é preta com letras brancas nos dois temas. Menu/toolbar, árvore, abas e painéis usam os ícones do pacote. O `Exibir > Tema escuro` troca QSS, paleta Qt e cores do syntax highlight juntos.
 
 ## Como usar
 

@@ -23,7 +23,6 @@ public:
 
     void setFilePath(const QString &filePath);
     QString filePath() const;
-    void refreshBackground();
 
     void showCompletions(const QVector<LspCompletionItem> &items);
     void setDiagnostics(const QVector<LspDiagnostic> &diagnostics);
