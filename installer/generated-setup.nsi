@@ -14,15 +14,15 @@ SetCompressor /SOLID lzma
 ShowInstDetails show
 ShowUnInstDetails show
 
-!define APP_VERSION "0.4.2"
+!define APP_VERSION "0.4.3"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\CppVisualIDE.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir a C++ Visual IDE agora"
 
-VIProductVersion "0.4.2.0"
+VIProductVersion "0.4.3.0"
 VIAddVersionKey "ProductName" "C++ Visual IDE"
 VIAddVersionKey "ProductVersion" "${APP_VERSION}"
-VIAddVersionKey "FileVersion" "0.4.2.0"
+VIAddVersionKey "FileVersion" "0.4.3.0"
 VIAddVersionKey "LegalCopyright" "C++ Visual IDE"
 VIAddVersionKey "FileDescription" "Instalador da C++ Visual IDE"
 
