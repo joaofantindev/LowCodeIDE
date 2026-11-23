@@ -7,6 +7,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QColor>
 #include <QDir>
 #include <QDockWidget>
 #include <QFile>
@@ -14,7 +15,11 @@
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QFont>
+#include <QFrame>
+#include <QIcon>
 #include <QInputDialog>
+#include <QLabel>
+#include <QPixmap>
 #include <QCursor>
 #include <QCryptographicHash>
 #include <QKeySequence>
@@ -28,6 +33,8 @@
 #include <QTextCursor>
 #include <QToolTip>
 #include <QSaveFile>
+#include <QSize>
+#include <QStackedWidget>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QStyle>
@@ -35,6 +42,31 @@
 #include <QTabWidget>
 #include <QToolBar>
 #include <QTreeWidget>
+#include <QVBoxLayout>
+
+namespace {
+QIcon iconForPath(const QString &path, bool isDir)
+{
+    if (isDir) {
+        return QIcon(QStringLiteral(":/images/folder.png"));
+    }
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    if (suffix == QStringLiteral("cpp") || suffix == QStringLiteral("h")
+        || suffix == QStringLiteral("hpp") || suffix == QStringLiteral("cc")) {
+        return QIcon(QStringLiteral(":/images/file_cpp.png"));
+    }
+    if (suffix == QStringLiteral("json") || suffix == QStringLiteral("ui")
+        || suffix == QStringLiteral("qss") || suffix == QStringLiteral("qrc")
+        || suffix == QStringLiteral("md")) {
+        return QIcon(QStringLiteral(":/images/file_config.png"));
+    }
+    if (suffix == QStringLiteral("exe") || suffix == QStringLiteral("ps1")
+        || suffix == QStringLiteral("bat")) {
+        return QIcon(QStringLiteral(":/images/file_run.png"));
+    }
+    return QIcon(QStringLiteral(":/images/file_text.png"));
+}
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -47,12 +79,17 @@ MainWindow::~MainWindow() = default;
 void MainWindow::setupUi()
 {
     setWindowTitle(QStringLiteral("C++ Visual IDE"));
+    setWindowIcon(QIcon(QStringLiteral(":/images/mascot.png")));
     resize(1250, 820);
 
     editorTabs = new QTabWidget(this);
     editorTabs->setTabsClosable(true);
-    setCentralWidget(editorTabs);
     connect(editorTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
+
+    centralStack = new QStackedWidget(this);
+    buildWelcomePage();
+    centralStack->addWidget(editorTabs);
+    setCentralWidget(centralStack);
 
     auto *treeDock = new QDockWidget(QStringLiteral("Projeto"), this);
     treeDock->setObjectName(QStringLiteral("projectDock"));
@@ -74,25 +111,32 @@ void MainWindow::setupUi()
     terminalView->setMaximumBlockCount(5000);
     terminalView->setFont(QFont(QStringLiteral("Consolas"), 10));
     buildView = new QPlainTextEdit(outputTabs);
+    buildView->setObjectName(QStringLiteral("buildView"));
     buildView->setReadOnly(true);
     buildView->setMaximumBlockCount(5000);
     buildView->setFont(QFont(QStringLiteral("Consolas"), 10));
     outputTabs->addTab(outputView, QStringLiteral("Saída"));
+    outputTabs->setTabIcon(0, QIcon(QStringLiteral(":/images/icon_plugins.png")));
     outputTabs->addTab(terminalView, QStringLiteral("Terminal"));
+    outputTabs->setTabIcon(1, QIcon(QStringLiteral(":/images/icon_terminal.png")));
     outputTabs->addTab(buildView, QStringLiteral("Build"));
+    outputTabs->setTabIcon(2, QIcon(QStringLiteral(":/images/icon_debug.png")));
     outputDock->setWidget(outputTabs);
     addDockWidget(Qt::BottomDockWidgetArea, outputDock);
 
     QToolBar *projectToolbar = addToolBar(QStringLiteral("Projeto"));
     projectToolbar->setObjectName(QStringLiteral("projectToolbar"));
+    projectToolbar->setIconSize(QSize(26, 26));
 
     QMenu *fileMenu = menuBar()->addMenu(QStringLiteral("&Arquivo"));
 
     QAction *newAction = fileMenu->addAction(QStringLiteral("&Novo Projeto..."));
+    newAction->setIcon(QIcon(QStringLiteral(":/images/folders_new.png")));
     newAction->setShortcut(QKeySequence::New);
     connect(newAction, &QAction::triggered, this, &MainWindow::newProject);
 
     QAction *openAction = fileMenu->addAction(QStringLiteral("&Abrir Projeto..."));
+    openAction->setIcon(QIcon(QStringLiteral(":/images/folders_open.png")));
     openAction->setShortcut(QKeySequence::Open);
     connect(openAction, &QAction::triggered, this, &MainWindow::openProject);
 
@@ -108,35 +152,42 @@ void MainWindow::setupUi()
     QMenu *projectMenu = menuBar()->addMenu(QStringLiteral("&Projeto"));
 
     QAction *designerAction = projectMenu->addAction(QStringLiteral("&Editar interface (Qt Designer)"));
+    designerAction->setIcon(QIcon(QStringLiteral(":/images/icon_cursor.png")));
     designerAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
     connect(designerAction, &QAction::triggered, this, &MainWindow::editInterface);
     projectToolbar->addAction(designerAction);
 
     QAction *generateAction = projectMenu->addAction(QStringLiteral("&Gerar código"));
+    generateAction->setIcon(QIcon(QStringLiteral(":/images/icon_tools.png")));
     generateAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
     connect(generateAction, &QAction::triggered, this, &MainWindow::regenerateCode);
     projectToolbar->addAction(generateAction);
 
     QAction *buildAction = projectMenu->addAction(QStringLiteral("&Compilar"));
+    buildAction->setIcon(QIcon(QStringLiteral(":/images/icon_debug.png")));
     buildAction->setShortcut(QKeySequence(QStringLiteral("F7")));
     connect(buildAction, &QAction::triggered, this, &MainWindow::buildProject);
     projectToolbar->addAction(buildAction);
 
     QAction *cancelBuildAction = projectMenu->addAction(QStringLiteral("Cancelar &build"));
+    cancelBuildAction->setIcon(QIcon(QStringLiteral(":/images/icon_bug.png")));
     cancelBuildAction->setShortcut(QKeySequence(QStringLiteral("Shift+F7")));
     connect(cancelBuildAction, &QAction::triggered, this, &MainWindow::cancelBuild);
 
     QAction *runAction = projectMenu->addAction(QStringLiteral("&Executar"));
+    runAction->setIcon(QIcon(QStringLiteral(":/images/icon_play.png")));
     runAction->setShortcut(QKeySequence(QStringLiteral("F5")));
     connect(runAction, &QAction::triggered, this, &MainWindow::runProject);
     projectToolbar->addAction(runAction);
 
     QAction *stopAction = projectMenu->addAction(QStringLiteral("&Parar execução"));
+    stopAction->setIcon(QIcon(QStringLiteral(":/images/icon_stop.png")));
     stopAction->setShortcut(QKeySequence(QStringLiteral("Shift+F5")));
     connect(stopAction, &QAction::triggered, this, &MainWindow::stopRun);
     projectToolbar->addAction(stopAction);
 
-    QMenu *codeMenu = menuBar()->addMenu(QStringLiteral("&Código"));
+    QMenu *codeMenu = menuBar()->addMenu(QIcon(QStringLiteral(":/images/icon_plugins.png")),
+                                         QStringLiteral("&Código"));
     QAction *completeAction = codeMenu->addAction(QStringLiteral("&Autocomplete"));
     completeAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Space")));
     connect(completeAction, &QAction::triggered, this, &MainWindow::requestCompletion);
@@ -145,12 +196,117 @@ void MainWindow::setupUi()
     definitionAction->setShortcut(QKeySequence(QStringLiteral("F2")));
     connect(definitionAction, &QAction::triggered, this, &MainWindow::requestDefinition);
 
-    QMenu *viewMenu = menuBar()->addMenu(QStringLiteral("&Exibir"));
+    QMenu *viewMenu = menuBar()->addMenu(QIcon(QStringLiteral(":/images/icon_settings.png")),
+                                         QStringLiteral("&Exibir"));
     QAction *darkAction = viewMenu->addAction(QStringLiteral("Tema &escuro"));
+    darkAction->setIcon(QIcon(QStringLiteral(":/images/icon_theme.png")));
     darkAction->setCheckable(true);
     connect(darkAction, &QAction::toggled, this, &MainWindow::toggleDarkTheme);
 
     statusBar()->showMessage(QStringLiteral("Pronto. Crie ou abra um projeto para começar."));
+    applyTheme(false);
+}
+
+void MainWindow::buildWelcomePage()
+{
+    welcomePage = new QFrame(centralStack);
+    welcomePage->setObjectName(QStringLiteral("welcomePage"));
+    auto *layout = new QVBoxLayout(welcomePage);
+    layout->setContentsMargins(36, 24, 36, 24);
+    layout->setSpacing(8);
+    layout->addStretch(2);
+
+    auto *logoLabel = new QLabel(welcomePage);
+    logoLabel->setAlignment(Qt::AlignCenter);
+    logoLabel->setPixmap(QPixmap(QStringLiteral(":/images/logo.png"))
+                             .scaled(240, 141, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    layout->addWidget(logoLabel);
+
+    auto *titleLabel = new QLabel(QStringLiteral("C++ Visual IDE"), welcomePage);
+    titleLabel->setObjectName(QStringLiteral("welcomeTitle"));
+    titleLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(titleLabel);
+
+    auto *subtitleLabel = new QLabel(QStringLiteral("RAD em Qt Widgets — leve, rápido e seu."),
+                                     welcomePage);
+    subtitleLabel->setObjectName(QStringLiteral("welcomeSubtitle"));
+    subtitleLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(subtitleLabel);
+    layout->addSpacing(20);
+
+    auto *card = new QFrame(welcomePage);
+    card->setObjectName(QStringLiteral("welcomeCard"));
+    card->setMaximumWidth(600);
+    auto *cardLayout = new QVBoxLayout(card);
+    cardLayout->setContentsMargins(24, 18, 24, 18);
+    cardLayout->setSpacing(6);
+    auto *hints = new QLabel(
+        QStringLiteral("<b>Comece por aqui</b><br>"
+                       "• Arquivo › Novo Projeto... — criar um projeto<br>"
+                       "• Projeto › Editar interface (Ctrl+D) — Qt Designer<br>"
+                       "• F7 compila sem travar · F5 executa<br>"
+                       "• Ctrl+Space autocomplete · F2 vai para a definição"),
+        card);
+    hints->setObjectName(QStringLiteral("welcomeHint"));
+    hints->setWordWrap(true);
+    hints->setTextInteractionFlags(Qt::NoTextInteraction);
+    cardLayout->addWidget(hints);
+    layout->addWidget(card, 0, Qt::AlignHCenter);
+    layout->addStretch(1);
+
+    auto *mascotLabel = new QLabel(welcomePage);
+    mascotLabel->setAlignment(Qt::AlignCenter);
+    mascotLabel->setPixmap(QPixmap(QStringLiteral(":/images/mascot_laptop.png"))
+                               .scaled(160, 141, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    layout->addWidget(mascotLabel);
+    layout->addStretch(1);
+
+    centralStack->addWidget(welcomePage);
+}
+
+void MainWindow::applyTheme(bool dark)
+{
+    darkThemeEnabled = dark;
+    QFile styleFile(dark ? QStringLiteral(":/themes/dark.qss") : QStringLiteral(":/themes/light.qss"));
+    if (styleFile.open(QIODevice::ReadOnly)) {
+        qApp->setStyleSheet(QString::fromUtf8(styleFile.readAll()));
+    }
+
+    QPalette palette = QApplication::style()->standardPalette();
+    if (dark) {
+        palette.setColor(QPalette::Window, QColor(QStringLiteral("#242424")));
+        palette.setColor(QPalette::WindowText, QColor(QStringLiteral("#F2E6D5")));
+        palette.setColor(QPalette::Base, QColor(QStringLiteral("#242424")));
+        palette.setColor(QPalette::AlternateBase, QColor(QStringLiteral("#383838")));
+        palette.setColor(QPalette::Text, QColor(QStringLiteral("#F2E6D5")));
+        palette.setColor(QPalette::Button, QColor(QStringLiteral("#303030")));
+        palette.setColor(QPalette::ButtonText, QColor(QStringLiteral("#F2E6D5")));
+        palette.setColor(QPalette::Highlight, QColor(QStringLiteral("#477CB8")));
+        palette.setColor(QPalette::HighlightedText, QColor(QStringLiteral("#F2E6D5")));
+        palette.setColor(QPalette::Mid, QColor(QStringLiteral("#737887")));
+        palette.setColor(QPalette::ToolTipBase, QColor(QStringLiteral("#383838")));
+        palette.setColor(QPalette::ToolTipText, QColor(QStringLiteral("#F2E6D5")));
+    } else {
+        palette.setColor(QPalette::Window, QColor(QStringLiteral("#F2E6D5")));
+        palette.setColor(QPalette::WindowText, QColor(QStringLiteral("#292929")));
+        palette.setColor(QPalette::Base, QColor(QStringLiteral("#FFF8EF")));
+        palette.setColor(QPalette::AlternateBase, QColor(QStringLiteral("#E7D8C4")));
+        palette.setColor(QPalette::Text, QColor(QStringLiteral("#292929")));
+        palette.setColor(QPalette::Button, QColor(QStringLiteral("#E7D8C4")));
+        palette.setColor(QPalette::ButtonText, QColor(QStringLiteral("#292929")));
+        palette.setColor(QPalette::Highlight, QColor(QStringLiteral("#477CB8")));
+        palette.setColor(QPalette::HighlightedText, Qt::white);
+        palette.setColor(QPalette::Mid, QColor(QStringLiteral("#71695F")));
+        palette.setColor(QPalette::ToolTipBase, QColor(QStringLiteral("#FFF8EF")));
+        palette.setColor(QPalette::ToolTipText, QColor(QStringLiteral("#292929")));
+    }
+    QApplication::setPalette(palette);
+    SyntaxHighlighter::setDarkTheme(dark);
+    for (int i = 0; i < editorTabs->count(); ++i) {
+        if (auto *editor = qobject_cast<CodeEditor *>(editorTabs->widget(i))) {
+            editor->refreshBackground();
+        }
+    }
 }
 
 void MainWindow::appendOutput(const QString &text)
@@ -266,6 +422,7 @@ void MainWindow::openProjectPath(const QString &path)
 void MainWindow::loadProject(const Project &loaded)
 {
     project = loaded;
+    centralStack->setCurrentWidget(editorTabs);
     refreshProjectTree();
 
     if (!lsp) {
@@ -328,6 +485,7 @@ void MainWindow::refreshProjectTree()
     auto *root = new QTreeWidgetItem(projectTree, {project.name.isEmpty() ? QStringLiteral("Projeto")
                                                                           : project.name});
     root->setData(0, Qt::UserRole, project.rootPath);
+    root->setIcon(0, QIcon(QStringLiteral(":/images/folder_open.png")));
     root->setFont(0, QFont(QApplication::font().family(), QApplication::font().pointSize(), QFont::Bold));
     addTreeItems(root, project.rootPath);
     projectTree->addTopLevelItem(root);
@@ -344,11 +502,9 @@ void MainWindow::addTreeItems(QTreeWidgetItem *parent, const QString &path)
         }
         auto *item = new QTreeWidgetItem(parent, {info.fileName()});
         item->setData(0, Qt::UserRole, info.absoluteFilePath());
+        item->setIcon(0, iconForPath(info.absoluteFilePath(), info.isDir()));
         if (info.isDir()) {
-            item->setIcon(0, style()->standardIcon(QStyle::SP_DirIcon));
             addTreeItems(item, info.absoluteFilePath());
-        } else {
-            item->setIcon(0, style()->standardIcon(QStyle::SP_FileIcon));
         }
     }
 }
@@ -827,22 +983,9 @@ void MainWindow::reopenDocumentsInLsp()
 
 void MainWindow::toggleDarkTheme(bool enabled)
 {
-    QPalette palette = QApplication::palette();
-    if (enabled) {
-        palette.setColor(QPalette::Window, QColor(0x1e, 0x1e, 0x1e));
-        palette.setColor(QPalette::WindowText, QColor(0xdd, 0xdd, 0xdd));
-        palette.setColor(QPalette::Base, QColor(0x28, 0x28, 0x28));
-        palette.setColor(QPalette::AlternateBase, QColor(0x33, 0x33, 0x33));
-        palette.setColor(QPalette::Text, QColor(0xdd, 0xdd, 0xdd));
-        palette.setColor(QPalette::Button, QColor(0x3a, 0x3a, 0x3a));
-        palette.setColor(QPalette::ButtonText, QColor(0xdd, 0xdd, 0xdd));
-        palette.setColor(QPalette::Highlight, QColor(0x2d, 0x7d, 0x9a));
-        palette.setColor(QPalette::HighlightedText, Qt::white);
-        palette.setColor(QPalette::Mid, QColor(0x88, 0x88, 0x88));
-    } else {
-        palette = QApplication::style()->standardPalette();
+    if (darkThemeEnabled != enabled) {
+        applyTheme(enabled);
     }
-    QApplication::setPalette(palette);
 }
 
 void MainWindow::syncUiWatcher()

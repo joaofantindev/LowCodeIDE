@@ -55,7 +55,12 @@ foreach ($pluginDir in @('platforms', 'styles', 'imageformats', 'generic', 'netw
     }
 }
 
-$script = $template.Replace('__DLL_FILES__', ($dllLines -join "`r`n")).Replace('__PLUGIN_LINES__', ($pluginLines -join "`r`n")).Replace('__OUT_FILE__', $outputFile).Replace('__SOURCE_DIR__', $sourceDir).Replace('__VERSION__', $Version)
+$iconFile = Join-Path $PSScriptRoot 'app.ico'
+$winVersion = ($Version -replace '[^0-9.]', '') + '.0'
+while (($winVersion.Split('.')).Count -lt 4) {
+    $winVersion += '.0'
+}
+$script = $template.Replace('__DLL_FILES__', ($dllLines -join "`r`n")).Replace('__PLUGIN_LINES__', ($pluginLines -join "`r`n")).Replace('__OUT_FILE__', $outputFile).Replace('__SOURCE_DIR__', $sourceDir).Replace('__VERSION__', $Version).Replace('__ICON_FILE__', $iconFile).Replace('__WIN_VERSION__', $winVersion)
 
 Set-Content -LiteralPath $generatedScript -Value $script -Encoding UTF8
 

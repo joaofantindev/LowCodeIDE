@@ -1,7 +1,10 @@
 #include "CodeEditor.h"
+#include "SyntaxHighlighter.h"
 
 #include <QAbstractItemView>
+#include <QBrush>
 #include <QColor>
+#include <QPalette>
 #include <QCompleter>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -41,6 +44,7 @@ private:
 CodeEditor::CodeEditor(QWidget *parent)
     : QPlainTextEdit(parent)
 {
+    setProperty("editor", true);
     lineNumberArea = new LineNumberArea(this);
 
     completionModel = new QStringListModel(this);
@@ -64,6 +68,24 @@ CodeEditor::CodeEditor(QWidget *parent)
 
     updateLineNumberAreaWidth(0);
     highlightCurrentLine();
+    refreshBackground();
+}
+
+void CodeEditor::refreshBackground()
+{
+    const QString resource = SyntaxHighlighter::isDarkTheme()
+                                 ? QStringLiteral(":/images/bg_dark.png")
+                                 : QStringLiteral(":/images/bg_light.png");
+    const QSize size = viewport()->size();
+    QPixmap source(resource);
+    if (size.isEmpty() || source.isNull()) {
+        return;
+    }
+    const QPixmap scaled = source.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    QPalette palette = viewport()->palette();
+    palette.setBrush(QPalette::Base, QBrush(scaled));
+    viewport()->setPalette(palette);
+    viewport()->setAutoFillBackground(true);
 }
 
 void CodeEditor::setFilePath(const QString &filePath)
@@ -243,6 +265,7 @@ void CodeEditor::resizeEvent(QResizeEvent *event)
     QPlainTextEdit::resizeEvent(event);
     const QRect rect = contentsRect();
     lineNumberArea->setGeometry(QRect(rect.left(), rect.top(), lineNumberAreaWidth(), rect.height()));
+    refreshBackground();
 }
 
 void CodeEditor::updateLineNumberAreaWidth(int)
@@ -291,7 +314,7 @@ void CodeEditor::highlightCurrentLine()
         QTextEdit::ExtraSelection selection;
         selection.cursor = cursor;
         selection.format.setUnderlineStyle(QTextCharFormat::SpellCheckUnderline);
-        selection.format.setUnderlineColor(QColor(QStringLiteral("#e06c75")));
+        selection.format.setUnderlineColor(QColor(QStringLiteral("#E5534B")));
         selection.format.setToolTip(diagnostic.message);
         selections.append(selection);
     }

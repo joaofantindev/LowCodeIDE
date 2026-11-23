@@ -5,6 +5,8 @@
 
 Name "C++ Visual IDE"
 OutFile "C:\Users\joaof\Desktop\code\cpp\IDE\installer\CppVisualIDE-Setup.exe"
+Icon "C:\Users\joaof\Desktop\code\cpp\IDE\installer\app.ico"
+UninstallIcon "C:\Users\joaof\Desktop\code\cpp\IDE\installer\app.ico"
 InstallDir "$LOCALAPPDATA\Programs\CppVisualIDE"
 InstallDirRegKey HKCU "Software\CppVisualIDE" "InstallDir"
 RequestExecutionLevel user
@@ -12,15 +14,15 @@ SetCompressor /SOLID lzma
 ShowInstDetails show
 ShowUnInstDetails show
 
-!define APP_VERSION "0.4.0"
+!define APP_VERSION "0.4.2"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\CppVisualIDE.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir a C++ Visual IDE agora"
 
-VIProductVersion "0.1.0.0"
+VIProductVersion "0.4.2.0"
 VIAddVersionKey "ProductName" "C++ Visual IDE"
 VIAddVersionKey "ProductVersion" "${APP_VERSION}"
-VIAddVersionKey "FileVersion" "0.1.0.0"
+VIAddVersionKey "FileVersion" "0.4.2.0"
 VIAddVersionKey "LegalCopyright" "C++ Visual IDE"
 VIAddVersionKey "FileDescription" "Instalador da C++ Visual IDE"
 

@@ -10,7 +10,13 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
+if(WIN32)
+    set(APP_ICON "${CMAKE_CURRENT_SOURCE_DIR}/installer/app.ico")
+    configure_file(src/app.rc.in ${CMAKE_CURRENT_BINARY_DIR}/app.rc @ONLY)
+endif()
+
 qt_add_executable(CppVisualIDE WIN32
+    resources.qrc
     src/main.cpp
     src/MainWindow.cpp
     src/MainWindow.h
@@ -33,6 +39,10 @@ qt_add_executable(CppVisualIDE WIN32
     src/UiForm.cpp
     src/UiForm.h
 )
+
+if(WIN32)
+    target_sources(CppVisualIDE PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/app.rc)
+endif()
 
 target_include_directories(CppVisualIDE PRIVATE src)
 target_link_libraries(CppVisualIDE PRIVATE Qt6::Widgets)

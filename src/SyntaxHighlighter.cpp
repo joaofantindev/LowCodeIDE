@@ -1,13 +1,57 @@
 #include "SyntaxHighlighter.h"
 
 #include <QColor>
+#include <QTextBlock>
 #include <QStringList>
+
+bool SyntaxHighlighter::darkTheme = false;
+QVector<QPointer<SyntaxHighlighter>> SyntaxHighlighter::instances;
 
 SyntaxHighlighter::SyntaxHighlighter(QTextDocument *parent)
     : QSyntaxHighlighter(parent)
 {
+    instances.append(this);
+    rebuildRules();
+}
+
+SyntaxHighlighter::~SyntaxHighlighter()
+{
+    instances.removeAll(this);
+}
+
+void SyntaxHighlighter::setDarkTheme(bool dark)
+{
+    if (darkTheme == dark) {
+        return;
+    }
+    darkTheme = dark;
+    for (const QPointer<SyntaxHighlighter> &highlighter : instances) {
+        if (highlighter) {
+            highlighter->rebuildRules();
+            highlighter->rehighlight();
+        }
+    }
+}
+
+bool SyntaxHighlighter::isDarkTheme()
+{
+    return darkTheme;
+}
+
+void SyntaxHighlighter::rebuildRules()
+{
+    rules.clear();
+
+    // Mesma paleta dos arquivos themes/*.qss.
+    const QString keywordColor = darkTheme ? QStringLiteral("#F5AE24") : QStringLiteral("#E99A17");
+    const QString classColor = QStringLiteral("#477CB8");
+    const QString stringColor = QStringLiteral("#78B94A");
+    const QString preprocessorColor = QStringLiteral("#E98228");
+    const QString numberColor = darkTheme ? QStringLiteral("#E98228") : QStringLiteral("#79513A");
+    const QString commentColor = darkTheme ? QStringLiteral("#737887") : QStringLiteral("#71695F");
+
     QTextCharFormat keywordFormat;
-    keywordFormat.setForeground(QColor("#c678dd"));
+    keywordFormat.setForeground(QColor(keywordColor));
     const QStringList keywords{
         "alignas", "auto", "bool", "break", "case", "class", "const", "constexpr",
         "continue", "default", "delete", "do", "double", "else", "enum", "explicit",
@@ -25,41 +69,43 @@ SyntaxHighlighter::SyntaxHighlighter(QTextDocument *parent)
     }
 
     QTextCharFormat classFormat;
-    classFormat.setForeground(QColor("#61afef"));
+    classFormat.setForeground(QColor(classColor));
     HighlightRule classRule;
     classRule.pattern = QRegularExpression(QStringLiteral("\\bQ[A-Za-z]+\\b"));
     classRule.format = classFormat;
     rules.append(classRule);
 
     QTextCharFormat stringFormat;
-    stringFormat.setForeground(QColor("#98c379"));
+    stringFormat.setForeground(QColor(stringColor));
     HighlightRule stringRule;
     stringRule.pattern = QRegularExpression(QStringLiteral("\".*\""));
     stringRule.format = stringFormat;
     rules.append(stringRule);
 
     QTextCharFormat preprocessorFormat;
-    preprocessorFormat.setForeground(QColor("#e5c07b"));
+    preprocessorFormat.setForeground(QColor(preprocessorColor));
     HighlightRule preprocessorRule;
     preprocessorRule.pattern = QRegularExpression(QStringLiteral("^\\s*#.*$"));
     preprocessorRule.format = preprocessorFormat;
     rules.append(preprocessorRule);
 
     QTextCharFormat numberFormat;
-    numberFormat.setForeground(QColor("#d19a66"));
+    numberFormat.setForeground(QColor(numberColor));
     HighlightRule numberRule;
     numberRule.pattern = QRegularExpression(QStringLiteral("\\b\\d+(\\.\\d+)?\\b"));
     numberRule.format = numberFormat;
     rules.append(numberRule);
 
     QTextCharFormat singleLineCommentFormat;
-    singleLineCommentFormat.setForeground(QColor("#7f848e"));
+    singleLineCommentFormat.setForeground(QColor(commentColor));
+    singleLineCommentFormat.setFontItalic(true);
     HighlightRule commentRule;
     commentRule.pattern = QRegularExpression(QStringLiteral("//[^\n]*"));
     commentRule.format = singleLineCommentFormat;
     rules.append(commentRule);
 
-    commentFormat.setForeground(QColor("#7f848e"));
+    commentFormat.setForeground(QColor(commentColor));
+    commentFormat.setFontItalic(true);
     commentStartExpression = QRegularExpression(QStringLiteral("/\\*"));
     commentEndExpression = QRegularExpression(QStringLiteral("\\*/"));
 }

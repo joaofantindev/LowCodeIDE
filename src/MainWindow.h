@@ -8,9 +8,12 @@
 
 class QDockWidget;
 class QFileSystemWatcher;
+class QFrame;
 class FormDesigner;
+class QLabel;
 class QPlainTextEdit;
 class QProcess;
+class QStackedWidget;
 class QTabWidget;
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -46,6 +49,8 @@ private slots:
 
 private:
     void setupUi();
+    void buildWelcomePage();
+    void applyTheme(bool dark);
     void loadProject(const Project &project);
     void refreshProjectTree();
     void addTreeItems(QTreeWidgetItem *parent, const QString &path);
@@ -63,6 +68,8 @@ private:
     LspClient *lsp = nullptr;
     QProcess *runProcess = nullptr;
     QProcess *buildProcess = nullptr;
+    QStackedWidget *centralStack = nullptr;
+    QFrame *welcomePage = nullptr;
     QTabWidget *editorTabs = nullptr;
     QTabWidget *outputTabs = nullptr;
     QTreeWidget *projectTree = nullptr;
@@ -76,4 +83,5 @@ private:
     int buildPhase = 0; // 0 = parado, 1 = cmake -S, 2 = cmake --build
     QFileSystemWatcher *uiWatcher = nullptr;
     QHash<QString, QByteArray> uiHashes;
+    bool darkThemeEnabled = false;
 };
