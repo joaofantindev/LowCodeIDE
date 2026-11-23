@@ -172,6 +172,7 @@ QString UiForm::toUi(const FormModel &form)
 FormModel UiForm::fromUi(const QString &xml, QString *error)
 {
     FormModel form;
+    form.name.clear(); // FormModel começa com "MainWindow"; o .ui é a fonte do nome.
     QXmlStreamReader reader(xml);
     QVector<WidgetNode *> stack;
     QString currentProperty;

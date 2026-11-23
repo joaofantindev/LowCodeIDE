@@ -42,6 +42,7 @@ Section "C++ Visual IDE (obrigatório)" SEC_MAIN
     SetOutPath "$INSTDIR"
 
     File "__SOURCE_DIR__\CppVisualIDE.exe"
+__DOC_LINES__
 __DLL_FILES__
 __PLUGIN_LINES__
     SetOutPath "$INSTDIR"
@@ -54,6 +55,7 @@ SectionEnd
 Section "Atalho no Menu Iniciar" SEC_STARTMENU
     CreateDirectory "$SMPROGRAMS\C++ Visual IDE"
     CreateShortcut "$SMPROGRAMS\C++ Visual IDE\C++ Visual IDE.lnk" "$INSTDIR\CppVisualIDE.exe"
+    CreateShortcut "$SMPROGRAMS\C++ Visual IDE\Guia do iniciante.lnk" "$INSTDIR\guia.md"
     CreateShortcut "$SMPROGRAMS\C++ Visual IDE\Desinstalar.lnk" "$INSTDIR\uninstall.exe"
 SectionEnd
 
@@ -64,6 +66,8 @@ SectionEnd
 Section "Uninstall"
     Delete "$INSTDIR\CppVisualIDE.exe"
     Delete "$INSTDIR\designer.exe"
+    Delete "$INSTDIR\guia.md"
+    Delete "$INSTDIR\README.md"
     Delete "$INSTDIR\*.dll"
     Delete "$INSTDIR\uninstall.exe"
     RMDir /r "$INSTDIR\platforms"
@@ -75,6 +79,7 @@ Section "Uninstall"
     RMDir "$INSTDIR"
 
     Delete "$SMPROGRAMS\C++ Visual IDE\C++ Visual IDE.lnk"
+    Delete "$SMPROGRAMS\C++ Visual IDE\Guia do iniciante.lnk"
     Delete "$SMPROGRAMS\C++ Visual IDE\Desinstalar.lnk"
     RMDir "$SMPROGRAMS\C++ Visual IDE"
     Delete "$DESKTOP\C++ Visual IDE.lnk"

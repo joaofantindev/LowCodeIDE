@@ -75,6 +75,18 @@ FormModel FormModel::defaultForm()
     return form;
 }
 
+FormModel FormModel::blankForm(const QString &name)
+{
+    FormModel form;
+    form.name = name;
+    form.baseClass = QStringLiteral("QWidget");
+    form.root.type = QStringLiteral("QWidget");
+    form.root.objectName = name;
+    form.root.layout = QStringLiteral("QVBoxLayout");
+    form.root.properties.insert(QStringLiteral("windowTitle"), name);
+    return form;
+}
+
 WidgetNode FormModel::nodeFromJson(const QJsonObject &object)
 {
     WidgetNode node;

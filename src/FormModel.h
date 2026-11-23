@@ -24,6 +24,7 @@ struct FormModel {
     WidgetNode root;
 
     static FormModel defaultForm();
+    static FormModel blankForm(const QString &name);
     static FormModel fromJson(const QJsonObject &object, QString *error = nullptr);
     QJsonObject toJson() const;
 

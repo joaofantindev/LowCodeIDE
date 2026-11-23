@@ -11,6 +11,7 @@ class QFileSystemWatcher;
 class QFrame;
 class FormDesigner;
 class QLabel;
+class QMenu;
 class QPlainTextEdit;
 class QProcess;
 class QStackedWidget;
@@ -29,6 +30,7 @@ public:
 
 private slots:
     void newProject();
+    void newForm();
     void openProject();
     void newScratchFile();
     void openCppFile();
@@ -55,6 +57,8 @@ private:
     void applyTheme();
     void loadProject(const Project &project);
     void refreshProjectTree();
+    void rebuildFormMenu();
+    void setActiveForm(int index);
     void addTreeItems(QTreeWidgetItem *parent, const QString &path);
     void addScratchItems(QTreeWidgetItem *parent);
     void openDocument(const QString &filePath);
@@ -78,6 +82,7 @@ private:
     QTabWidget *editorTabs = nullptr;
     QTabWidget *outputTabs = nullptr;
     QTreeWidget *projectTree = nullptr;
+    QMenu *formMenu = nullptr;
     QPlainTextEdit *outputView = nullptr;
     QPlainTextEdit *terminalView = nullptr;
     QPlainTextEdit *buildView = nullptr;
@@ -88,6 +93,7 @@ private:
     int buildPhase = 0; // 0 = parado, 1 = cmake -S, 2 = cmake --build
     qint64 runPid = 0;
     QString scratchDir;
+    int currentFormIndex = 0;
     QFileSystemWatcher *uiWatcher = nullptr;
     QHash<QString, QByteArray> uiHashes;
 };

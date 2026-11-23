@@ -31,6 +31,7 @@
 #include <QPointer>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QRegularExpression>
 #include <QTextCursor>
 #include <QToolTip>
 #include <QSaveFile>
@@ -126,11 +127,11 @@ void MainWindow::setupUi()
     buildView->setMaximumBlockCount(5000);
     buildView->setFont(QFont(QStringLiteral("Consolas"), 10));
     outputTabs->addTab(outputView, QStringLiteral("Saída"));
-    outputTabs->setTabIcon(0, QIcon(QStringLiteral(":/images/icon_plugins.png")));
+    outputTabs->setTabIcon(0, QIcon(QStringLiteral(":/images/plugins.png")));
     outputTabs->addTab(terminalView, QStringLiteral("Terminal"));
-    outputTabs->setTabIcon(1, QIcon(QStringLiteral(":/images/icon_terminal.png")));
+    outputTabs->setTabIcon(1, QIcon(QStringLiteral(":/images/terminal.png")));
     outputTabs->addTab(buildView, QStringLiteral("Build"));
-    outputTabs->setTabIcon(2, QIcon(QStringLiteral(":/images/icon_debug.png")));
+    outputTabs->setTabIcon(2, QIcon(QStringLiteral(":/images/debug.png")));
     outputDock->setWidget(outputTabs);
     addDockWidget(Qt::BottomDockWidgetArea, outputDock);
 
@@ -141,12 +142,12 @@ void MainWindow::setupUi()
     QMenu *fileMenu = menuBar()->addMenu(QStringLiteral("&Arquivo"));
 
     QAction *newAction = fileMenu->addAction(QStringLiteral("&Novo Projeto..."));
-    newAction->setIcon(QIcon(QStringLiteral(":/images/folders_new.png")));
+    newAction->setIcon(QIcon(QStringLiteral(":/images/folder_new.png")));
     newAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+N")));
     connect(newAction, &QAction::triggered, this, &MainWindow::newProject);
 
     QAction *openAction = fileMenu->addAction(QStringLiteral("&Abrir Projeto..."));
-    openAction->setIcon(QIcon(QStringLiteral(":/images/folders_open.png")));
+    openAction->setIcon(QIcon(QStringLiteral(":/images/folder_open.png")));
     openAction->setShortcut(QKeySequence::Open);
     connect(openAction, &QAction::triggered, this, &MainWindow::openProject);
 
@@ -178,42 +179,52 @@ void MainWindow::setupUi()
 
     QMenu *projectMenu = menuBar()->addMenu(QStringLiteral("&Projeto"));
 
+    QAction *newFormAction = projectMenu->addAction(QStringLiteral("&Novo formulário..."));
+    newFormAction->setIcon(QIcon(QStringLiteral(":/images/folder_new.png")));
+    newFormAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+F")));
+    connect(newFormAction, &QAction::triggered, this, &MainWindow::newForm);
+    projectToolbar->addAction(newFormAction);
+
+    formMenu = projectMenu->addMenu(QIcon(QStringLiteral(":/images/settings.png")),
+                                    QStringLiteral("&Formulário ativo"));
+    projectMenu->addSeparator();
+
     QAction *designerAction = projectMenu->addAction(QStringLiteral("&Editar interface (Qt Designer)"));
-    designerAction->setIcon(QIcon(QStringLiteral(":/images/icon_cursor.png")));
+    designerAction->setIcon(QIcon(QStringLiteral(":/images/cursor.png")));
     designerAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
     connect(designerAction, &QAction::triggered, this, &MainWindow::editInterface);
     projectToolbar->addAction(designerAction);
 
     QAction *generateAction = projectMenu->addAction(QStringLiteral("&Gerar código"));
-    generateAction->setIcon(QIcon(QStringLiteral(":/images/icon_tools.png")));
+    generateAction->setIcon(QIcon(QStringLiteral(":/images/tools.png")));
     generateAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
     connect(generateAction, &QAction::triggered, this, &MainWindow::regenerateCode);
     projectToolbar->addAction(generateAction);
 
     QAction *buildAction = projectMenu->addAction(QStringLiteral("&Compilar"));
-    buildAction->setIcon(QIcon(QStringLiteral(":/images/icon_debug.png")));
+    buildAction->setIcon(QIcon(QStringLiteral(":/images/debug.png")));
     buildAction->setShortcut(QKeySequence(QStringLiteral("F7")));
     connect(buildAction, &QAction::triggered, this, &MainWindow::buildProject);
     projectToolbar->addAction(buildAction);
 
     QAction *cancelBuildAction = projectMenu->addAction(QStringLiteral("Cancelar &build"));
-    cancelBuildAction->setIcon(QIcon(QStringLiteral(":/images/icon_bug.png")));
+    cancelBuildAction->setIcon(QIcon(QStringLiteral(":/images/bug.png")));
     cancelBuildAction->setShortcut(QKeySequence(QStringLiteral("Shift+F7")));
     connect(cancelBuildAction, &QAction::triggered, this, &MainWindow::cancelBuild);
 
     QAction *runAction = projectMenu->addAction(QStringLiteral("&Executar"));
-    runAction->setIcon(QIcon(QStringLiteral(":/images/icon_play.png")));
+    runAction->setIcon(QIcon(QStringLiteral(":/images/run.png")));
     runAction->setShortcut(QKeySequence(QStringLiteral("F5")));
     connect(runAction, &QAction::triggered, this, &MainWindow::runProject);
     projectToolbar->addAction(runAction);
 
     QAction *stopAction = projectMenu->addAction(QStringLiteral("&Parar execução"));
-    stopAction->setIcon(QIcon(QStringLiteral(":/images/icon_stop.png")));
+    stopAction->setIcon(QIcon(QStringLiteral(":/images/stop.png")));
     stopAction->setShortcut(QKeySequence(QStringLiteral("Shift+F5")));
     connect(stopAction, &QAction::triggered, this, &MainWindow::stopRun);
     projectToolbar->addAction(stopAction);
 
-    QMenu *codeMenu = menuBar()->addMenu(QIcon(QStringLiteral(":/images/icon_plugins.png")),
+    QMenu *codeMenu = menuBar()->addMenu(QIcon(QStringLiteral(":/images/plugins.png")),
                                          QStringLiteral("&Código"));
     QAction *completeAction = codeMenu->addAction(QStringLiteral("&Autocomplete"));
     completeAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Space")));
@@ -396,6 +407,119 @@ void MainWindow::newProject()
     appendOutput(QStringLiteral("Arquivos gerados: %1").arg(result.writtenFiles.count()));
 }
 
+void MainWindow::newForm()
+{
+    if (project.rootPath.isEmpty() || project.forms.isEmpty()) {
+        appendOutput(QStringLiteral("Abra ou crie um projeto antes de criar um formulário."));
+        return;
+    }
+
+    QString suggested;
+    for (int candidate = project.forms.size() + 1; candidate < 1000; ++candidate) {
+        suggested = QStringLiteral("Form%1").arg(candidate);
+        bool taken = false;
+        for (const FormModel &form : project.forms) {
+            if (form.name.compare(suggested, Qt::CaseInsensitive) == 0) {
+                taken = true;
+                break;
+            }
+        }
+        if (!taken) {
+            break;
+        }
+    }
+
+    bool ok = false;
+    const QString typed = QInputDialog::getText(
+        this, QStringLiteral("Novo formulário"),
+        QStringLiteral("Nome da classe do formulário (ex.: LoginWindow):"),
+        QLineEdit::Normal, suggested, &ok);
+    if (!ok) {
+        return;
+    }
+    const QString name = typed.trimmed();
+    static const QRegularExpression identifier(QStringLiteral("^[A-Za-z_][A-Za-z0-9_]*$"));
+    if (!identifier.match(name).hasMatch()) {
+        QMessageBox::warning(this, QStringLiteral("Novo formulário"),
+                             QStringLiteral("Use letras, números e _ (começando com letra ou _)."));
+        return;
+    }
+    for (const FormModel &form : project.forms) {
+        if (form.name.compare(name, Qt::CaseInsensitive) == 0) {
+            QMessageBox::warning(this, QStringLiteral("Novo formulário"),
+                                 QStringLiteral("Já existe um formulário chamado %1.").arg(name));
+            return;
+        }
+    }
+
+    project.forms.append(FormModel::blankForm(name));
+    QString error;
+    if (!project.save(&error)) {
+        project.forms.removeLast();
+        QMessageBox::critical(this, QStringLiteral("Novo formulário"), error);
+        return;
+    }
+    const GenerateResult result = CodeGenerator::generateAll(project);
+    if (!result.ok) {
+        project.forms.removeLast();
+        QString rollbackError;
+        project.save(&rollbackError);
+        QMessageBox::critical(this, QStringLiteral("Novo formulário"), result.error);
+        return;
+    }
+
+    setActiveForm(project.forms.size() - 1);
+    rebuildFormMenu();
+    refreshProjectTree();
+    syncUiWatcher();
+    for (const QString &relative : {QStringLiteral("forms/%1.ui"), QStringLiteral("src/%1.h"),
+                                    QStringLiteral("src/%1.cpp")}) {
+        openDocument(QDir(project.rootPath).filePath(relative.arg(name)));
+    }
+    appendOutput(QStringLiteral("Formulário %1 criado (forms/%1.ui, src/%1.h, src/%1.cpp).")
+                     .arg(name));
+    statusBar()->showMessage(QStringLiteral("Formulário %1 criado.").arg(name), 4000);
+}
+
+void MainWindow::rebuildFormMenu()
+{
+    if (!formMenu) {
+        return;
+    }
+    formMenu->clear();
+    for (int i = 0; i < project.forms.size(); ++i) {
+        QAction *action = formMenu->addAction(project.forms.at(i).name);
+        action->setCheckable(true);
+        action->setChecked(i == currentFormIndex);
+        action->setData(i);
+        connect(action, &QAction::triggered, this,
+                [this, action]() { setActiveForm(action->data().toInt()); });
+    }
+    formMenu->setEnabled(!project.forms.isEmpty());
+}
+
+void MainWindow::setActiveForm(int index)
+{
+    if (index < 0 || index >= project.forms.size()) {
+        return;
+    }
+    currentFormIndex = index;
+    if (designer) {
+        designer->setForm(project.forms.at(index));
+    }
+    if (editorTabs && editorTabs->count() > 0
+        && qobject_cast<FormDesigner *>(editorTabs->widget(0))) {
+        editorTabs->setCurrentIndex(0);
+    }
+    if (formMenu) {
+        for (QAction *action : formMenu->actions()) {
+            action->setChecked(action->data().toInt() == index);
+        }
+    }
+    statusBar()->showMessage(
+        QStringLiteral("Formulário ativo: %1").arg(project.forms.at(index).name), 3000);
+}
+
 void MainWindow::openProject()
 {
     const QString path = QFileDialog::getOpenFileName(
@@ -484,6 +608,7 @@ void MainWindow::openProjectPath(const QString &path)
 void MainWindow::loadProject(const Project &loaded)
 {
     project = loaded;
+    currentFormIndex = 0;
     centralStack->setCurrentWidget(editorTabs);
     refreshProjectTree();
 
@@ -510,26 +635,29 @@ void MainWindow::loadProject(const Project &loaded)
         if (!designer) {
             designer = new FormDesigner(editorTabs);
             connect(designer, &FormDesigner::formChanged, this, [this](const FormModel &form) {
-                if (!project.forms.isEmpty()) {
-                    project.forms[0] = form;
+                if (currentFormIndex >= 0 && currentFormIndex < project.forms.size()) {
+                    project.forms[currentFormIndex] = form;
                 }
             });
         }
-        designer->setForm(project.forms.first());
+        designer->setForm(project.forms.at(currentFormIndex));
         editorTabs->insertTab(0, designer, QStringLiteral("Designer"));
         editorTabs->setCurrentIndex(0);
     }
 
     QStringList initialFiles{
         QStringLiteral("src/main.cpp"),
-        QStringLiteral("src/MainWindow.cpp"),
-        QStringLiteral("src/MainWindow.h"),
         QStringLiteral("generated/bindings.h"),
         QStringLiteral("generated/app_vars.h"),
         QStringLiteral("project.json"),
     };
-    if (!project.forms.isEmpty()) {
-        initialFiles.prepend(QStringLiteral("forms/%1.ui").arg(project.forms.first().name));
+    for (const FormModel &form : project.forms) {
+        initialFiles.prepend(QStringLiteral("forms/%1.ui").arg(form.name));
+        initialFiles << QStringLiteral("src/%1.cpp").arg(form.name)
+                     << QStringLiteral("src/%1.h").arg(form.name);
+        if (form.name != project.forms.first().name) {
+            initialFiles << QStringLiteral("generated/bindings_%1.h").arg(form.name);
+        }
     }
     for (const QString &relative : initialFiles) {
         const QString path = QDir(project.rootPath).filePath(relative);
@@ -537,6 +665,8 @@ void MainWindow::loadProject(const Project &loaded)
             openDocument(path);
         }
     }
+    rebuildFormMenu();
+    setActiveForm(currentFormIndex);
     syncUiWatcher();
     statusBar()->showMessage(QStringLiteral("Projeto: %1").arg(project.rootPath));
 }
@@ -604,6 +734,16 @@ void MainWindow::openFileFromTree(QTreeWidgetItem *item, int column)
     }
     const QString path = item->data(0, Qt::UserRole).toString();
     if (!path.isEmpty() && QFileInfo::exists(path) && QFileInfo(path).isFile()) {
+        if (path.endsWith(QStringLiteral(".ui"), Qt::CaseInsensitive)) {
+            const QString canonical = QFileInfo(path).canonicalFilePath();
+            for (int i = 0; i < project.forms.size(); ++i) {
+                if (QFileInfo(project.formFilePath(project.forms.at(i))).canonicalFilePath()
+                    == canonical) {
+                    setActiveForm(i);
+                    break;
+                }
+            }
+        }
         openDocument(path);
     }
 }
@@ -1236,8 +1376,21 @@ void MainWindow::reloadUiFromDisk(const QString &path)
         }
     }
 
-    if (designer && !project.forms.isEmpty()) {
-        designer->setForm(project.forms.first());
+    if (!project.forms.isEmpty()) {
+        int index = currentFormIndex >= project.forms.size() ? 0 : currentFormIndex;
+        const QString canonical = QFileInfo(path).canonicalFilePath();
+        for (int i = 0; i < project.forms.size(); ++i) {
+            if (QFileInfo(project.formFilePath(project.forms.at(i))).canonicalFilePath()
+                == canonical) {
+                index = i;
+                break;
+            }
+        }
+        currentFormIndex = index;
+        if (designer) {
+            designer->setForm(project.forms.at(index));
+        }
+        rebuildFormMenu();
     }
     appendOutput(QStringLiteral("Interface recarregada do Qt Designer: %1")
                      .arg(QFileInfo(path).fileName()));
@@ -1250,8 +1403,10 @@ void MainWindow::editInterface()
         appendOutput(QStringLiteral("Abra ou crie um projeto antes de editar a interface."));
         return;
     }
-    const QString path = QDir(project.rootPath)
-                             .filePath(QStringLiteral("forms/%1.ui").arg(project.forms.first().name));
+    if (currentFormIndex < 0 || currentFormIndex >= project.forms.size()) {
+        currentFormIndex = 0;
+    }
+    const QString path = project.formFilePath(project.forms.at(currentFormIndex));
     if (!QFileInfo::exists(path)) {
         QString error;
         if (!project.save(&error)) {

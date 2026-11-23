@@ -14,15 +14,15 @@ SetCompressor /SOLID lzma
 ShowInstDetails show
 ShowUnInstDetails show
 
-!define APP_VERSION "0.4.5"
+!define APP_VERSION "0.4.6"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\CppVisualIDE.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir a C++ Visual IDE agora"
 
-VIProductVersion "0.4.5.0"
+VIProductVersion "0.4.6.0"
 VIAddVersionKey "ProductName" "C++ Visual IDE"
 VIAddVersionKey "ProductVersion" "${APP_VERSION}"
-VIAddVersionKey "FileVersion" "0.4.5.0"
+VIAddVersionKey "FileVersion" "0.4.6.0"
 VIAddVersionKey "LegalCopyright" "C++ Visual IDE"
 VIAddVersionKey "FileDescription" "Instalador da C++ Visual IDE"
 
@@ -42,6 +42,8 @@ Section "C++ Visual IDE (obrigatÃ³rio)" SEC_MAIN
     SetOutPath "$INSTDIR"
 
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\CppVisualIDE.exe"
+    File "C:\Users\joaof\Desktop\code\cpp\IDE\guia.md"
+    File "C:\Users\joaof\Desktop\code\cpp\IDE\README.md"
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\libb2-1.dll"
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\libbrotlicommon.dll"
     File "C:\Users\joaof\Desktop\code\cpp\IDE\build\libbrotlidec.dll"
@@ -99,6 +101,7 @@ SectionEnd
 Section "Atalho no Menu Iniciar" SEC_STARTMENU
     CreateDirectory "$SMPROGRAMS\C++ Visual IDE"
     CreateShortcut "$SMPROGRAMS\C++ Visual IDE\C++ Visual IDE.lnk" "$INSTDIR\CppVisualIDE.exe"
+    CreateShortcut "$SMPROGRAMS\C++ Visual IDE\Guia do iniciante.lnk" "$INSTDIR\guia.md"
     CreateShortcut "$SMPROGRAMS\C++ Visual IDE\Desinstalar.lnk" "$INSTDIR\uninstall.exe"
 SectionEnd
 
@@ -109,6 +112,8 @@ SectionEnd
 Section "Uninstall"
     Delete "$INSTDIR\CppVisualIDE.exe"
     Delete "$INSTDIR\designer.exe"
+    Delete "$INSTDIR\guia.md"
+    Delete "$INSTDIR\README.md"
     Delete "$INSTDIR\*.dll"
     Delete "$INSTDIR\uninstall.exe"
     RMDir /r "$INSTDIR\platforms"
@@ -120,6 +125,7 @@ Section "Uninstall"
     RMDir "$INSTDIR"
 
     Delete "$SMPROGRAMS\C++ Visual IDE\C++ Visual IDE.lnk"
+    Delete "$SMPROGRAMS\C++ Visual IDE\Guia do iniciante.lnk"
     Delete "$SMPROGRAMS\C++ Visual IDE\Desinstalar.lnk"
     RMDir "$SMPROGRAMS\C++ Visual IDE"
     Delete "$DESKTOP\C++ Visual IDE.lnk"

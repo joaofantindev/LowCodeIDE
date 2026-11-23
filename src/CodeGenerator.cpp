@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QJsonDocument>
 #include <QJsonValue>
+#include <QPair>
 #include <QSet>
 #include <QTextStream>
 
@@ -160,14 +161,16 @@ void genNode(const WidgetNode &node, const QString &parentExpr,
     }
 }
 
-QString generateBindingsHeader(const FormModel &form, const GenContext &ctx)
+QString generateBindingsHeader(const FormModel &form, const GenContext &ctx,
+                               const QString &functionName)
 {
     QStringList lines;
     lines << QStringLiteral("#pragma once") << QStringLiteral("")
           << QStringLiteral("#include <QWidget>")
           << QStringLiteral("#include \"app_vars.h\"")
           << QStringLiteral("#include \"ui_%1.h\"").arg(form.name) << QStringLiteral("")
-          << QStringLiteral("inline void applyBindings(QWidget* host, Ui::%1* ui)").arg(form.name)
+          << QStringLiteral("inline void %1(QWidget* host, Ui::%2* ui)")
+                 .arg(functionName, form.name)
           << QStringLiteral("{");
     if (ctx.bindings.isEmpty()) {
         lines << QStringLiteral("    Q_UNUSED(host);") << QStringLiteral("    Q_UNUSED(ui);");
@@ -332,12 +335,13 @@ QString slotBody(const QString &formName, const QString &slot)
         .arg(formName, slot, formName);
 }
 
-QString generateFormSource(const QString &formName, const GenContext &ctx)
+QString generateFormSource(const QString &formName, const GenContext &ctx,
+                           const QString &bindingsHeader, const QString &bindingsFunction)
 {
     QStringList lines;
     lines << QStringLiteral("#include \"%1.h\"").arg(formName) << QStringLiteral("")
           << QStringLiteral("#include <QMessageBox>")
-          << QStringLiteral("#include \"bindings.h\"") << QStringLiteral("");
+          << QStringLiteral("#include \"%1\"").arg(bindingsHeader) << QStringLiteral("");
     QStringList senderTypes = ctx.senderTypes.values();
     senderTypes.sort();
     for (const QString &type : senderTypes) {
@@ -348,7 +352,7 @@ QString generateFormSource(const QString &formName, const GenContext &ctx)
           << QStringLiteral("    : QWidget(parent)")
           << QStringLiteral("{")
           << QStringLiteral("    ui.setupUi(this);")
-          << QStringLiteral("    applyBindings(this, &ui);")
+          << QStringLiteral("    %1(this, &ui);").arg(bindingsFunction)
           << QStringLiteral("}");
 
     QStringList slotList = ctx.slotNames.values();
@@ -379,6 +383,7 @@ bool readTextFile(const QString &path, QString *content, QString *error)
 // Mantém o código escrito pelo usuário e acrescenta apenas o que é novo.
 bool patchFormFiles(const QString &headerPath, const QString &sourcePath,
                     const QString &formName, const GenContext &ctx,
+                    const QString &bindingsHeader, const QString &bindingsFunction,
                     GenerateResult &result, QString *error)
 {
     QString header;
@@ -428,12 +433,14 @@ bool patchFormFiles(const QString &headerPath, const QString &sourcePath,
             source.remove(beginIndex, endIndex + end.length() - beginIndex);
         }
     }
-    if (!source.contains(QStringLiteral("applyBindings(this, &ui);"))) {
+    const QString bindingsCall = QStringLiteral("%1(this, &ui);").arg(bindingsFunction);
+    if (!source.contains(QStringLiteral("%1(this, &ui)").arg(bindingsFunction))) {
         source.replace(QStringLiteral("    ui.setupUi(this);"),
-                       QStringLiteral("    ui.setupUi(this);\n    applyBindings(this, &ui);"));
+                       QStringLiteral("    ui.setupUi(this);\n    ") + bindingsCall);
     }
-    if (!source.contains(QStringLiteral("#include \"bindings.h\""))) {
-        source.prepend(QStringLiteral("#include \"bindings.h\"\n"));
+    const QString includeLine = QStringLiteral("#include \"%1\"").arg(bindingsHeader);
+    if (!source.contains(includeLine)) {
+        source.prepend(includeLine + QLatin1Char('\n'));
     }
     for (const QString &slot : slotList) {
         if (source.contains(QStringLiteral("void %1::%2(").arg(formName, slot))) {
@@ -495,9 +502,24 @@ Write-Host "Dependências MinGW copiadas: $($dllNames.Count) DLL(s)."
 )PS1");
 }
 
-QString generateCMake(const Project &project, const QString &formName)
+QString generateCMake(const Project &project)
 {
     const QString target = project.name.trimmed().replace(QLatin1Char(' '), QLatin1Char('_'));
+    QStringList sources{QStringLiteral("src/main.cpp")};
+    QStringList formFiles;
+    QStringList generatedHeaders{QStringLiteral("generated/bindings.h"),
+                                 QStringLiteral("generated/app_vars.cpp"),
+                                 QStringLiteral("generated/app_vars.h")};
+    for (int i = 0; i < project.forms.size(); ++i) {
+        const QString name = project.forms.at(i).name;
+        sources << QStringLiteral("src/%1.cpp").arg(name)
+                << QStringLiteral("src/%1.h").arg(name);
+        formFiles << QStringLiteral("forms/%1.ui").arg(name);
+        if (i > 0) {
+            generatedHeaders << QStringLiteral("generated/bindings_%1.h").arg(name);
+        }
+    }
+
     QStringList lines;
     lines << QStringLiteral("cmake_minimum_required(VERSION 3.25)")
           << QStringLiteral("")
@@ -512,15 +534,17 @@ QString generateCMake(const Project &project, const QString &formName)
           << QStringLiteral("")
           << QStringLiteral("find_package(Qt6 REQUIRED COMPONENTS Widgets)")
           << QStringLiteral("")
-          << QStringLiteral("qt_add_executable(%1 WIN32").arg(target)
-          << QStringLiteral("    src/main.cpp")
-          << QStringLiteral("    src/MainWindow.cpp")
-          << QStringLiteral("    src/MainWindow.h")
-          << QStringLiteral("    forms/%1.ui").arg(formName)
-          << QStringLiteral("    generated/bindings.h")
-          << QStringLiteral("    generated/app_vars.cpp")
-          << QStringLiteral("    generated/app_vars.h")
-          << QStringLiteral(")")
+          << QStringLiteral("qt_add_executable(%1 WIN32").arg(target);
+    for (const QString &file : sources) {
+        lines << QStringLiteral("    %1").arg(file);
+    }
+    for (const QString &file : formFiles) {
+        lines << QStringLiteral("    %1").arg(file);
+    }
+    for (const QString &file : generatedHeaders) {
+        lines << QStringLiteral("    %1").arg(file);
+    }
+    lines << QStringLiteral(")")
           << QStringLiteral("")
           << QStringLiteral("target_include_directories(%1 PRIVATE src generated)").arg(target)
           << QStringLiteral("target_link_libraries(%1 PRIVATE Qt6::Widgets)").arg(target)
@@ -587,47 +611,74 @@ GenerateResult CodeGenerator::generateAll(const Project &project, bool overwrite
     }
 
     const QDir root(project.rootPath);
-    const FormModel &form = project.forms.first();
-    if (form.name.isEmpty()) {
-        result.error = QStringLiteral("Formulário sem nome.");
-        return result;
+    QVector<GenContext> contexts;
+    contexts.reserve(project.forms.size());
+    for (const FormModel &form : project.forms) {
+        if (form.name.isEmpty()) {
+            result.error = QStringLiteral("Formulário sem nome.");
+            return result;
+        }
+        GenContext ctx;
+        genNode(form.root, QStringLiteral("host"), QString(), true, ctx);
+        contexts.append(ctx);
     }
-
-    GenContext ctx;
-    genNode(form.root, QStringLiteral("host"), QString(), true, ctx);
 
     auto write = [&](const QString &relative, const QString &content) {
         return writeGeneratedFile(root.filePath(relative), content, result, &result.error);
     };
+    // O primeiro formulário mantém generated/bindings.h por compatibilidade;
+    // os demais recebem bindings_<Nome>.h para não colidir.
+    auto bindingsNames = [](int index, const QString &name) {
+        return index == 0
+                   ? QPair<QString, QString>{QStringLiteral("bindings.h"),
+                                             QStringLiteral("applyBindings")}
+                   : QPair<QString, QString>{QStringLiteral("bindings_%1.h").arg(name),
+                                             QStringLiteral("applyBindings_%1").arg(name)};
+    };
 
-    if (!write(QStringLiteral("generated/bindings.h"), generateBindingsHeader(form, ctx))
-        || !write(QStringLiteral("generated/app_vars.h"), generateVarsHeader(project))
+    for (int i = 0; i < project.forms.size(); ++i) {
+        const QPair<QString, QString> names = bindingsNames(i, project.forms.at(i).name);
+        if (!write(QStringLiteral("generated/%1").arg(names.first),
+                   generateBindingsHeader(project.forms.at(i), contexts.at(i), names.second))) {
+            return result;
+        }
+    }
+
+    if (!write(QStringLiteral("generated/app_vars.h"), generateVarsHeader(project))
         || !write(QStringLiteral("generated/app_vars.cpp"), generateVarsSource(project))
         || !write(QStringLiteral("tools/deploy-runtime.ps1"), generateDeployScript())
-        || !write(QStringLiteral("CMakeLists.txt"), generateCMake(project, form.name))) {
+        || !write(QStringLiteral("CMakeLists.txt"), generateCMake(project))) {
         return result;
     }
 
+    const QString startupForm = project.forms.first().name;
     if (overwriteUserFiles || !root.exists(QStringLiteral("src/main.cpp"))) {
-        if (!write(QStringLiteral("src/main.cpp"), generateMainSource(form.name))) {
+        if (!write(QStringLiteral("src/main.cpp"), generateMainSource(startupForm))) {
             return result;
         }
     }
-    const QString formHeader = QStringLiteral("src/%1.h").arg(form.name);
-    const QString formSource = QStringLiteral("src/%1.cpp").arg(form.name);
-    if (overwriteUserFiles || !root.exists(formHeader)) {
-        if (!write(formHeader, generateFormHeader(form.name, ctx))) {
+
+    for (int i = 0; i < project.forms.size(); ++i) {
+        const QString name = project.forms.at(i).name;
+        const QPair<QString, QString> names = bindingsNames(i, name);
+        const QString formHeader = QStringLiteral("src/%1.h").arg(name);
+        const QString formSource = QStringLiteral("src/%1.cpp").arg(name);
+        if (overwriteUserFiles || !root.exists(formHeader)) {
+            if (!write(formHeader, generateFormHeader(name, contexts.at(i)))) {
+                return result;
+            }
+        }
+        if (overwriteUserFiles || !root.exists(formSource)) {
+            if (!write(formSource, generateFormSource(name, contexts.at(i),
+                                                      names.first, names.second))) {
+                return result;
+            }
+        }
+        if (!patchFormFiles(root.filePath(formHeader), root.filePath(formSource),
+                            name, contexts.at(i), names.first, names.second,
+                            result, &result.error)) {
             return result;
         }
-    }
-    if (overwriteUserFiles || !root.exists(formSource)) {
-        if (!write(formSource, generateFormSource(form.name, ctx))) {
-            return result;
-        }
-    }
-    if (!patchFormFiles(root.filePath(formHeader), root.filePath(formSource),
-                        form.name, ctx, result, &result.error)) {
-        return result;
     }
 
     QJsonObject varsJson;
