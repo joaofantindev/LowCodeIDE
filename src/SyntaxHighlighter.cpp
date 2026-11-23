@@ -42,13 +42,13 @@ void SyntaxHighlighter::rebuildRules()
 {
     rules.clear();
 
-    // Mesma paleta dos arquivos themes/*.qss.
-    const QString keywordColor = darkTheme ? QStringLiteral("#F5AE24") : QStringLiteral("#E99A17");
+    // Paleta do tema escuro (themes/dark.qss).
+    const QString keywordColor = QStringLiteral("#F5AE24");
     const QString classColor = QStringLiteral("#477CB8");
     const QString stringColor = QStringLiteral("#78B94A");
     const QString preprocessorColor = QStringLiteral("#E98228");
-    const QString numberColor = darkTheme ? QStringLiteral("#E98228") : QStringLiteral("#79513A");
-    const QString commentColor = darkTheme ? QStringLiteral("#737887") : QStringLiteral("#71695F");
+    const QString numberColor = QStringLiteral("#E98228");
+    const QString commentColor = QStringLiteral("#737887");
 
     QTextCharFormat keywordFormat;
     keywordFormat.setForeground(QColor(keywordColor));

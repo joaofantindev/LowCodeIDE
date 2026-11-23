@@ -19,6 +19,7 @@
 #include <QIcon>
 #include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPixmap>
 #include <QCursor>
 #include <QCryptographicHash>
@@ -43,6 +44,11 @@
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+
+#ifndef Q_OS_WIN
+#include <signal.h>
+#include <unistd.h>
+#endif
 
 namespace {
 QIcon iconForPath(const QString &path, bool isDir)
@@ -71,7 +77,11 @@ QIcon iconForPath(const QString &path, bool isDir)
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    scratchDir = QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation))
+                     .filePath(QStringLiteral("CppIDE-Testes"));
+    QDir().mkpath(scratchDir);
     setupUi();
+    refreshProjectTree();
 }
 
 MainWindow::~MainWindow() = default;
@@ -132,7 +142,7 @@ void MainWindow::setupUi()
 
     QAction *newAction = fileMenu->addAction(QStringLiteral("&Novo Projeto..."));
     newAction->setIcon(QIcon(QStringLiteral(":/images/folders_new.png")));
-    newAction->setShortcut(QKeySequence::New);
+    newAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+N")));
     connect(newAction, &QAction::triggered, this, &MainWindow::newProject);
 
     QAction *openAction = fileMenu->addAction(QStringLiteral("&Abrir Projeto..."));
@@ -143,6 +153,23 @@ void MainWindow::setupUi()
     QAction *saveAction = fileMenu->addAction(QStringLiteral("&Salvar"));
     saveAction->setShortcut(QKeySequence::Save);
     connect(saveAction, &QAction::triggered, this, &MainWindow::saveProject);
+
+    fileMenu->addSeparator();
+    QAction *newCppAction = fileMenu->addAction(QStringLiteral("&Novo arquivo C++ para teste..."));
+    newCppAction->setIcon(QIcon(QStringLiteral(":/images/file_cpp.png")));
+    newCppAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+N")));
+    connect(newCppAction, &QAction::triggered, this, &MainWindow::newScratchFile);
+    projectToolbar->addAction(newCppAction);
+
+    QAction *openCppAction = fileMenu->addAction(QStringLiteral("A&brir arquivo C++..."));
+    openCppAction->setIcon(QIcon(QStringLiteral(":/images/file_text.png")));
+    connect(openCppAction, &QAction::triggered, this, &MainWindow::openCppFile);
+
+    QAction *runCppAction = fileMenu->addAction(QStringLiteral("Compilar e executar &arquivo (teste)"));
+    runCppAction->setIcon(QIcon(QStringLiteral(":/images/file_run.png")));
+    runCppAction->setShortcut(QKeySequence(QStringLiteral("F6")));
+    connect(runCppAction, &QAction::triggered, this, &MainWindow::runScratchFile);
+    projectToolbar->addAction(runCppAction);
 
     fileMenu->addSeparator();
     QAction *quitAction = fileMenu->addAction(QStringLiteral("S&air"));
@@ -196,15 +223,8 @@ void MainWindow::setupUi()
     definitionAction->setShortcut(QKeySequence(QStringLiteral("F2")));
     connect(definitionAction, &QAction::triggered, this, &MainWindow::requestDefinition);
 
-    QMenu *viewMenu = menuBar()->addMenu(QIcon(QStringLiteral(":/images/icon_settings.png")),
-                                         QStringLiteral("&Exibir"));
-    QAction *darkAction = viewMenu->addAction(QStringLiteral("Tema &escuro"));
-    darkAction->setIcon(QIcon(QStringLiteral(":/images/icon_theme.png")));
-    darkAction->setCheckable(true);
-    connect(darkAction, &QAction::toggled, this, &MainWindow::toggleDarkTheme);
-
-    statusBar()->showMessage(QStringLiteral("Pronto. Crie ou abra um projeto para começar."));
-    applyTheme(false);
+    statusBar()->showMessage(QStringLiteral("Pronto. Crie um projeto ou um arquivo C++ de teste."));
+    applyTheme();
 }
 
 void MainWindow::buildWelcomePage()
@@ -242,9 +262,10 @@ void MainWindow::buildWelcomePage()
     cardLayout->setSpacing(6);
     auto *hints = new QLabel(
         QStringLiteral("<b>Comece por aqui</b><br>"
+                       "• Arquivo › Novo arquivo C++ para teste (Ctrl+N) — compila com F6<br>"
                        "• Arquivo › Novo Projeto... — criar um projeto<br>"
                        "• Projeto › Editar interface (Ctrl+D) — Qt Designer<br>"
-                       "• F7 compila sem travar · F5 executa<br>"
+                       "• F7 compila sem travar · F5 executa no terminal do sistema<br>"
                        "• Ctrl+Space autocomplete · F2 vai para a definição"),
         card);
     hints->setObjectName(QStringLiteral("welcomeHint"));
@@ -264,44 +285,28 @@ void MainWindow::buildWelcomePage()
     centralStack->addWidget(welcomePage);
 }
 
-void MainWindow::applyTheme(bool dark)
+void MainWindow::applyTheme()
 {
-    darkThemeEnabled = dark;
-    QFile styleFile(dark ? QStringLiteral(":/themes/dark.qss") : QStringLiteral(":/themes/light.qss"));
+    QFile styleFile(QStringLiteral(":/themes/dark.qss"));
     if (styleFile.open(QIODevice::ReadOnly)) {
         qApp->setStyleSheet(QString::fromUtf8(styleFile.readAll()));
     }
 
     QPalette palette = QApplication::style()->standardPalette();
-    if (dark) {
-        palette.setColor(QPalette::Window, QColor(QStringLiteral("#242424")));
-        palette.setColor(QPalette::WindowText, QColor(QStringLiteral("#F2E6D5")));
-        palette.setColor(QPalette::Base, QColor(QStringLiteral("#242424")));
-        palette.setColor(QPalette::AlternateBase, QColor(QStringLiteral("#383838")));
-        palette.setColor(QPalette::Text, QColor(QStringLiteral("#F2E6D5")));
-        palette.setColor(QPalette::Button, QColor(QStringLiteral("#303030")));
-        palette.setColor(QPalette::ButtonText, QColor(QStringLiteral("#F2E6D5")));
-        palette.setColor(QPalette::Highlight, QColor(QStringLiteral("#477CB8")));
-        palette.setColor(QPalette::HighlightedText, QColor(QStringLiteral("#F2E6D5")));
-        palette.setColor(QPalette::Mid, QColor(QStringLiteral("#737887")));
-        palette.setColor(QPalette::ToolTipBase, QColor(QStringLiteral("#383838")));
-        palette.setColor(QPalette::ToolTipText, QColor(QStringLiteral("#F2E6D5")));
-    } else {
-        palette.setColor(QPalette::Window, QColor(QStringLiteral("#F2E6D5")));
-        palette.setColor(QPalette::WindowText, QColor(QStringLiteral("#292929")));
-        palette.setColor(QPalette::Base, QColor(QStringLiteral("#FFF8EF")));
-        palette.setColor(QPalette::AlternateBase, QColor(QStringLiteral("#E7D8C4")));
-        palette.setColor(QPalette::Text, QColor(QStringLiteral("#292929")));
-        palette.setColor(QPalette::Button, QColor(QStringLiteral("#E7D8C4")));
-        palette.setColor(QPalette::ButtonText, QColor(QStringLiteral("#292929")));
-        palette.setColor(QPalette::Highlight, QColor(QStringLiteral("#477CB8")));
-        palette.setColor(QPalette::HighlightedText, Qt::white);
-        palette.setColor(QPalette::Mid, QColor(QStringLiteral("#71695F")));
-        palette.setColor(QPalette::ToolTipBase, QColor(QStringLiteral("#FFF8EF")));
-        palette.setColor(QPalette::ToolTipText, QColor(QStringLiteral("#292929")));
-    }
+    palette.setColor(QPalette::Window, QColor(QStringLiteral("#242424")));
+    palette.setColor(QPalette::WindowText, QColor(QStringLiteral("#F2E6D5")));
+    palette.setColor(QPalette::Base, QColor(QStringLiteral("#242424")));
+    palette.setColor(QPalette::AlternateBase, QColor(QStringLiteral("#383838")));
+    palette.setColor(QPalette::Text, QColor(QStringLiteral("#F2E6D5")));
+    palette.setColor(QPalette::Button, QColor(QStringLiteral("#303030")));
+    palette.setColor(QPalette::ButtonText, QColor(QStringLiteral("#F2E6D5")));
+    palette.setColor(QPalette::Highlight, QColor(QStringLiteral("#477CB8")));
+    palette.setColor(QPalette::HighlightedText, QColor(QStringLiteral("#F2E6D5")));
+    palette.setColor(QPalette::Mid, QColor(QStringLiteral("#737887")));
+    palette.setColor(QPalette::ToolTipBase, QColor(QStringLiteral("#383838")));
+    palette.setColor(QPalette::ToolTipText, QColor(QStringLiteral("#F2E6D5")));
     QApplication::setPalette(palette);
-    SyntaxHighlighter::setDarkTheme(dark);
+    SyntaxHighlighter::setDarkTheme(true);
 }
 
 void MainWindow::appendOutput(const QString &text)
@@ -402,6 +407,68 @@ void MainWindow::openProject()
     openProjectPath(path);
 }
 
+void MainWindow::newScratchFile()
+{
+    bool ok = false;
+    QString name = QInputDialog::getText(
+        this, QStringLiteral("Novo arquivo C++ de teste"), QStringLiteral("Nome do arquivo:"),
+        QLineEdit::Normal, QStringLiteral("teste"), &ok);
+    if (!ok || name.trimmed().isEmpty()) {
+        return;
+    }
+    name = name.trimmed();
+    for (QChar &character : name) {
+        if (!character.isLetterOrNumber() && character != QLatin1Char('_')
+            && character != QLatin1Char('-') && character != QLatin1Char('.')) {
+            character = QLatin1Char('_');
+        }
+    }
+    if (!name.endsWith(QStringLiteral(".cpp"), Qt::CaseInsensitive)) {
+        name += QStringLiteral(".cpp");
+    }
+
+    const QString path = QDir(scratchDir).filePath(name);
+    if (QFileInfo::exists(path)) {
+        QMessageBox::warning(this, QStringLiteral("Novo arquivo C++ de teste"),
+                             QStringLiteral("O arquivo já existe:\n%1").arg(path));
+        return;
+    }
+
+    const QString source = QStringLiteral(
+        "#include <iostream>\n\n"
+        "int main()\n"
+        "{\n"
+        "    std::cout << \"Olá do C++ Visual IDE!\" << std::endl;\n"
+        "    return 0;\n"
+        "}\n");
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        QMessageBox::critical(this, QStringLiteral("Novo arquivo C++ de teste"), file.errorString());
+        return;
+    }
+    file.write(source.toUtf8());
+    if (!file.commit()) {
+        QMessageBox::critical(this, QStringLiteral("Novo arquivo C++ de teste"), file.errorString());
+        return;
+    }
+    centralStack->setCurrentWidget(editorTabs);
+    refreshProjectTree();
+    openDocument(path);
+    statusBar()->showMessage(QStringLiteral("Arquivo de teste criado: %1").arg(path), 3000);
+}
+
+void MainWindow::openCppFile()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this, QStringLiteral("Abrir arquivo C++"), scratchDir,
+        QStringLiteral("Arquivos C++ (*.cpp *.cc *.cxx *.h *.hpp);;Todos os arquivos (*.*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    centralStack->setCurrentWidget(editorTabs);
+    openDocument(path);
+}
+
 void MainWindow::openProjectPath(const QString &path)
 {
     QString error;
@@ -477,6 +544,7 @@ void MainWindow::loadProject(const Project &loaded)
 void MainWindow::refreshProjectTree()
 {
     projectTree->clear();
+    if (!project.rootPath.isEmpty()) {
     auto *root = new QTreeWidgetItem(projectTree, {project.name.isEmpty() ? QStringLiteral("Projeto")
                                                                           : project.name});
     root->setData(0, Qt::UserRole, project.rootPath);
@@ -485,6 +553,30 @@ void MainWindow::refreshProjectTree()
     addTreeItems(root, project.rootPath);
     projectTree->addTopLevelItem(root);
     projectTree->expandItem(root);
+    }
+
+    auto *scratchRoot = new QTreeWidgetItem(projectTree,
+                                            {QStringLiteral("Arquivos C++ soltos (testes)")});
+    scratchRoot->setData(0, Qt::UserRole, scratchDir);
+    scratchRoot->setIcon(0, QIcon(QStringLiteral(":/images/file_cpp.png")));
+    scratchRoot->setFont(0, QFont(QApplication::font().family(), QApplication::font().pointSize(),
+                                  QFont::Bold));
+    addScratchItems(scratchRoot);
+    projectTree->addTopLevelItem(scratchRoot);
+    projectTree->expandItem(scratchRoot);
+}
+
+void MainWindow::addScratchItems(QTreeWidgetItem *parent)
+{
+    const QFileInfoList entries = QDir(scratchDir).entryInfoList(
+        {QStringLiteral("*.cpp"), QStringLiteral("*.cc"), QStringLiteral("*.cxx"),
+         QStringLiteral("*.h"), QStringLiteral("*.hpp")},
+        QDir::Files, QDir::Name);
+    for (const QFileInfo &info : entries) {
+        auto *item = new QTreeWidgetItem(parent, {info.fileName()});
+        item->setData(0, Qt::UserRole, info.absoluteFilePath());
+        item->setIcon(0, iconForPath(info.absoluteFilePath(), false));
+    }
 }
 
 void MainWindow::addTreeItems(QTreeWidgetItem *parent, const QString &path)
@@ -555,6 +647,21 @@ void MainWindow::openDocument(const QString &filePath)
     editorTabs->tabBar()->setTabData(index, filePath);
     editorTabs->setTabToolTip(index, filePath);
     editorTabs->setCurrentIndex(index);
+}
+
+QString MainWindow::currentSourcePath() const
+{
+    const int index = editorTabs->currentIndex();
+    if (index < 0) {
+        return {};
+    }
+    const QString path = editorTabs->tabBar()->tabData(index).toString();
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    if (suffix == QStringLiteral("cpp") || suffix == QStringLiteral("cc")
+        || suffix == QStringLiteral("cxx") || suffix == QStringLiteral("c")) {
+        return path;
+    }
+    return {};
 }
 
 void MainWindow::closeTab(int index)
@@ -798,15 +905,48 @@ void MainWindow::cancelBuild()
     buildProcess->kill();
 }
 
+qint64 MainWindow::launchInTerminal(const QString &executable, const QString &workingDirectory)
+{
+    qint64 pid = 0;
+    bool started = false;
+#ifdef Q_OS_WIN
+    const QString cmd = findExecutable(QStringLiteral("cmd"));
+    const QString program = cmd.isEmpty() ? QStringLiteral("cmd.exe") : cmd;
+    started = QProcess::startDetached(
+        program, {QStringLiteral("/D"), QStringLiteral("/K"), QDir::toNativeSeparators(executable)},
+        workingDirectory, &pid);
+#else
+    const QStringList terminals{QStringLiteral("x-terminal-emulator"),
+                                QStringLiteral("gnome-terminal"), QStringLiteral("konsole"),
+                                QStringLiteral("xfce4-terminal"), QStringLiteral("xterm")};
+    for (const QString &terminal : terminals) {
+        QStringList args;
+        if (terminal == QStringLiteral("gnome-terminal")) {
+            args << QStringLiteral("--") << executable;
+        } else {
+            args << QStringLiteral("-e") << executable;
+        }
+        started = QProcess::startDetached(terminal, args, workingDirectory, &pid);
+        if (started) {
+            break;
+        }
+    }
+#endif
+    if (!started) {
+        appendOutput(QStringLiteral("Não foi possível abrir o terminal do sistema."));
+        return 0;
+    }
+    appendTerminal(QStringLiteral("> %1").arg(executable));
+    statusBar()->showMessage(QStringLiteral("Executando no terminal do sistema (Shift+F5 para parar)."),
+                             4000);
+    return pid;
+}
+
 void MainWindow::runProject()
 {
     if (project.rootPath.isEmpty()) {
         appendOutput(QStringLiteral("Abra ou crie um projeto antes de executar."));
         return;
-    }
-
-    if (runProcess && runProcess->state() != QProcess::NotRunning) {
-        stopRun();
     }
 
     const QString target = project.name.trimmed().replace(QLatin1Char(' '), QLatin1Char('_'));
@@ -824,41 +964,89 @@ void MainWindow::runProject()
 
     terminalView->clear();
     outputTabs->setCurrentWidget(terminalView);
-    const QString workingDirectory = QFileInfo(executable).absolutePath();
-    appendTerminal(QStringLiteral("> %1").arg(executable));
-
-    runProcess = new QProcess(this);
-    runProcess->setWorkingDirectory(workingDirectory);
-    connect(runProcess, &QProcess::readyReadStandardOutput, this, [this]() {
-        appendTerminal(QString::fromLocal8Bit(runProcess->readAllStandardOutput()));
-    });
-    connect(runProcess, &QProcess::readyReadStandardError, this, [this]() {
-        appendTerminal(QString::fromLocal8Bit(runProcess->readAllStandardError()));
-    });
-    connect(runProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
-        appendTerminal(status == QProcess::NormalExit
-                           ? QStringLiteral("[processo terminou com código %1]").arg(exitCode)
-                           : QStringLiteral("[processo foi encerrado]"));
-        statusBar()->showMessage(QStringLiteral("Execução finalizada."), 3000);
-    });
-    runProcess->start(executable, {});
-    if (!runProcess->waitForStarted(5000)) {
-        appendTerminal(QStringLiteral("Falha ao iniciar: %1").arg(runProcess->errorString()));
-        return;
-    }
-    statusBar()->showMessage(QStringLiteral("Aplicação iniciada (Shift+F5 para parar)."), 3000);
+    runPid = launchInTerminal(executable, QFileInfo(executable).absolutePath());
 }
 
 void MainWindow::stopRun()
 {
-    if (!runProcess || runProcess->state() == QProcess::NotRunning) {
+    if (runPid <= 0) {
+        statusBar()->showMessage(QStringLiteral("Nenhuma execução ativa."), 2000);
         return;
     }
-    appendTerminal(QStringLiteral("[encerrando...]"));
-    runProcess->terminate();
-    if (!runProcess->waitForFinished(1500)) {
-        runProcess->kill();
-        runProcess->waitForFinished(1000);
+#ifdef Q_OS_WIN
+    QProcess::execute(QStringLiteral("taskkill"),
+                      {QStringLiteral("/PID"), QString::number(runPid), QStringLiteral("/F")});
+#else
+    ::kill(static_cast<pid_t>(runPid), SIGTERM);
+#endif
+    appendTerminal(QStringLiteral("[processo encerrado]"));
+    runPid = 0;
+    statusBar()->showMessage(QStringLiteral("Execução encerrada."), 3000);
+}
+
+void MainWindow::runScratchFile()
+{
+    if (scratchProcess && scratchProcess->state() != QProcess::NotRunning) {
+        appendBuildOutput(QStringLiteral("[já há uma compilação em andamento]"));
+        return;
+    }
+
+    const QString source = currentSourcePath();
+    if (source.isEmpty()) {
+        appendOutput(QStringLiteral("Abra um arquivo .cpp para compilar e executar o teste (F6)."));
+        return;
+    }
+    auto *editor = qobject_cast<CodeEditor *>(editorTabs->currentWidget());
+    if (editor && editor->document()->isModified()) {
+        saveProject();
+    }
+
+    const QString compiler = findExecutable(QStringLiteral("g++"));
+    if (compiler.isEmpty()) {
+        appendOutput(QStringLiteral("g++ não encontrado no PATH."));
+        return;
+    }
+
+#ifdef Q_OS_WIN
+    const QString executable = QDir(scratchDir)
+                                   .filePath(QFileInfo(source).completeBaseName()
+                                             + QStringLiteral(".exe"));
+#else
+    const QString executable = QDir(scratchDir).filePath(QFileInfo(source).completeBaseName());
+#endif
+
+    if (scratchProcess) {
+        scratchProcess->deleteLater();
+    }
+    scratchProcess = new QProcess(this);
+    connect(scratchProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+        appendBuildOutput(QString::fromLocal8Bit(scratchProcess->readAllStandardOutput()));
+    });
+    connect(scratchProcess, &QProcess::readyReadStandardError, this, [this]() {
+        appendBuildOutput(QString::fromLocal8Bit(scratchProcess->readAllStandardError()));
+    });
+    connect(scratchProcess, &QProcess::finished, this,
+            [this, executable](int exitCode, QProcess::ExitStatus status) {
+                const bool ok = status == QProcess::NormalExit && exitCode == 0;
+                if (!ok) {
+                    appendBuildOutput(QStringLiteral("[Falha na compilação: código %1]").arg(exitCode));
+                    statusBar()->showMessage(QStringLiteral("Compilação do teste falhou."), 4000);
+                    return;
+                }
+                appendBuildOutput(QStringLiteral("[OK] Executando no terminal do sistema..."));
+                statusBar()->showMessage(QStringLiteral("Teste compilado."), 3000);
+                runPid = launchInTerminal(executable, QFileInfo(executable).absolutePath());
+            });
+
+    buildView->clear();
+    outputDock->show();
+    outputTabs->setCurrentWidget(buildView);
+    appendBuildOutput(QStringLiteral("> g++ -std=c++20 -Wall %1 -o %2").arg(source, executable));
+    scratchProcess->start(compiler, {QStringLiteral("-std=c++20"), QStringLiteral("-Wall"), source,
+                                     QStringLiteral("-o"), executable});
+    if (!scratchProcess->waitForStarted(3000)) {
+        appendBuildOutput(QStringLiteral("Falha ao iniciar g++."));
+        statusBar()->showMessage(QStringLiteral("Falha ao iniciar g++."), 4000);
     }
 }
 
@@ -973,13 +1161,6 @@ void MainWindow::reopenDocumentsInLsp()
             continue;
         }
         lsp->openFile(editor->filePath(), editor->toPlainText());
-    }
-}
-
-void MainWindow::toggleDarkTheme(bool enabled)
-{
-    if (darkThemeEnabled != enabled) {
-        applyTheme(enabled);
     }
 }
 

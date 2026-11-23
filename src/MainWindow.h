@@ -30,10 +30,13 @@ public:
 private slots:
     void newProject();
     void openProject();
+    void newScratchFile();
+    void openCppFile();
     void saveProject();
     void regenerateCode();
     void buildProject();
     void runProject();
+    void runScratchFile();
     void stopRun();
     void openFileFromTree(QTreeWidgetItem *item, int column);
     void closeTab(int index);
@@ -42,7 +45,6 @@ private slots:
     void requestHover();
     void onDiagnostics(const QString &filePath, const QVector<LspDiagnostic> &diagnostics);
     void reopenDocumentsInLsp();
-    void toggleDarkTheme(bool enabled);
     void editInterface();
     void onUiFileChanged(const QString &path);
     void cancelBuild();
@@ -50,15 +52,18 @@ private slots:
 private:
     void setupUi();
     void buildWelcomePage();
-    void applyTheme(bool dark);
+    void applyTheme();
     void loadProject(const Project &project);
     void refreshProjectTree();
     void addTreeItems(QTreeWidgetItem *parent, const QString &path);
+    void addScratchItems(QTreeWidgetItem *parent);
     void openDocument(const QString &filePath);
+    QString currentSourcePath() const;
     void appendOutput(const QString &text);
     void appendTerminal(const QString &text);
     void appendBuildOutput(const QString &text);
     void finishBuild(bool success);
+    qint64 launchInTerminal(const QString &executable, const QString &workingDirectory);
     QString findExecutable(const QString &name) const;
     void syncUiWatcher();
     void reloadUiFromDisk(const QString &path);
@@ -66,8 +71,8 @@ private:
     Project project;
     FormDesigner *designer = nullptr;
     LspClient *lsp = nullptr;
-    QProcess *runProcess = nullptr;
     QProcess *buildProcess = nullptr;
+    QProcess *scratchProcess = nullptr;
     QStackedWidget *centralStack = nullptr;
     QFrame *welcomePage = nullptr;
     QTabWidget *editorTabs = nullptr;
@@ -81,7 +86,8 @@ private:
     bool buildCancelled = false;
     bool buildHadCompileCommands = false;
     int buildPhase = 0; // 0 = parado, 1 = cmake -S, 2 = cmake --build
+    qint64 runPid = 0;
+    QString scratchDir;
     QFileSystemWatcher *uiWatcher = nullptr;
     QHash<QString, QByteArray> uiHashes;
-    bool darkThemeEnabled = false;
 };

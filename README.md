@@ -15,9 +15,10 @@ IDE visual para C++ com Qt Widgets, no estilo Delphi/Lazarus. Este repositório 
 - [x] Conexões no `.ui` (o `uic` gera os `connect`); o gerador acrescenta slots novos sem apagar o código escrito pelo usuário
 - [x] Editor: numeração, linha atual, syntax highlight, auto-indentação, auto-fechar brackets, Ctrl+Space
 - [x] F1: clangd/LSP — autocomplete, hover, ir para definição (F2) e diagnósticos sublinhados
-- [x] Árvore de projeto, salvamento, painéis Saída/Terminal/Build, compilação **assíncrona** (F7, sem travar a UI), Cancelar build (Shift+F7), Executar (F5) e Parar (Shift+F5)
+- [x] Árvore de projeto (com área de arquivos C++ soltos para testes), salvamento, painéis Saída/Terminal/Build, compilação **assíncrona** (F7, sem travar a UI), Cancelar build (Shift+F7), Executar no terminal do sistema (F5) e Parar (Shift+F5)
 - [x] Designer nativo (paleta, drag & drop, canvas e inspetor) como alternativa ao Qt Designer
-- [x] Temas claro/escuro com paleta QSS, ícones e tela de boas-vindas (menu `Exibir`)
+- [x] Tema escuro único com paleta QSS, ícones e tela de boas-vindas
+- [x] Arquivos C++ avulsos para teste: Ctrl+N cria, F6 compila com g++ e executa no terminal do sistema
 - [ ] F3/F4: múltiplos formulários com Nova Instância/Janela e navegação entre eles
 
 ## Ambiente usado
@@ -69,13 +70,12 @@ O mesmo par de scripts é gerado dentro de cada projeto criado pela IDE (`tools/
 
 ## Aparência
 
-Os assets em `images\CppIDE_Assets\` são embutidos no executável por `resources.qrc` — não é preciso distribuir a pasta junto. Os temas ficam em `themes\dark.qss` e `themes\light.qss` e usam exatamente as cores definidas para cada modo:
+Os assets em `images\CppIDE_Assets\` são embutidos no executável por `resources.qrc` — não é preciso distribuir a pasta junto. A IDE usa apenas o tema escuro (`themes\dark.qss`) com as cores definidas:
 
-- escuro: fundo `#242424`, painéis `#303030`, cards `#383838`, texto `#F2E6D5`, acento `#F5AE24`;
-- claro: fundo `#F2E6D5`, painéis `#E7D8C4`, cards `#FFF8EF`, texto `#292929`, acento `#E99A17`;
-- apoio: sucesso `#78B94A`, erro `#E5534B`, texto secundário `#B8B8B8`/`#71695F`, bordas `#737887`, detalhe rústico/mascote `#79513A`, seleção `#477CB8`.
+- fundo `#242424`, painéis `#303030`, cards `#383838`, texto `#F2E6D5`, acento `#F5AE24`;
+- apoio: sucesso `#78B94A`, erro `#E5534B`, texto secundário `#B8B8B8`, bordas `#737887`, detalhe rústico/mascote `#79513A`, seleção `#477CB8`.
 
-A tela de boas-vindas e o editor usam cores sólidas da paleta, sem imagens de fundo. A área de arquivos é preta com letras brancas nos dois temas. Menu/toolbar, árvore, abas e painéis usam os ícones do pacote. O `Exibir > Tema escuro` troca QSS, paleta Qt e cores do syntax highlight juntos.
+A tela de boas-vindas e o editor usam cores sólidas da paleta, sem imagens de fundo. A área de arquivos é preta com letras brancas. Menu/toolbar, árvore, abas e painéis usam os ícones do pacote. QSS, paleta Qt e cores do syntax highlight são aplicados juntos na inicialização.
 
 ## Como usar
 
@@ -85,10 +85,10 @@ A tela de boas-vindas e o editor usam cores sólidas da paleta, sem imagens de f
 4. A aba **Designer** da própria IDE continua disponível: paleta, drag & drop, canvas e inspetor. Ela grava no mesmo `.ui`, com suporte a `$variavel` no inspetor.
 5. `Projeto > Gerar código` (Ctrl+G) regera `generated/`, o `CMakeLists.txt` e acrescenta slots novos em `src/` sem apagar o código que você escreveu nos slots existentes.
 6. `Projeto > Compilar` (F7) executa CMake + Ninja em segundo plano: a IDE continua respondendo e a saída aparece em tempo real na aba **Build**. Pressione F7 novamente (ou `Shift+F7`) para cancelar. Se o executável ainda não existir, F5 compila antes e só inicia o programa quando o build terminar.
-7. `Projeto > Executar` (F5) inicia `build\<projeto>.exe`. A saída do programa aparece na aba **Terminal**; `Shift+F5` encerra.
-8. Dê duplo clique num arquivo na árvore à esquerda para editá-lo; `Ctrl+S` salva.
-9. No editor: `Ctrl+Space` abre o autocomplete do clangd, `F2` vai para a definição, passar o mouse mostra a documentação e erros aparecem sublinhados.
-10. `Exibir > Tema escuro` alterna entre os temas claro e escuro (incluindo fundo do editor e cores do código).
+7. `Projeto > Executar` (F5) inicia `build\<projeto>.exe` em uma janela do **terminal do sistema** (`cmd.exe` no Windows); a saída vai para essa janela, não fica presa na IDE. `Shift+F5` encerra o processo.
+8. Para testes rápidos sem projeto: `Arquivo > Novo arquivo C++ para teste...` (Ctrl+N) cria um `.cpp` em `Documentos\CppIDE-Testes`. O nó **Arquivos C++ soltos (testes)** na árvore mostra esses arquivos (e qualquer `.cpp/.h` aberto via `Arquivo > Abrir arquivo C++...`). Dê duplo clique para editar; `Ctrl+S` salva.
+9. Com um `.cpp` aberto, `Arquivo > Compilar e executar arquivo (teste)` (F6) roda `g++ -std=c++20 -Wall` em segundo plano (saída na aba **Build**) e, se compilar, abre o `.exe` no terminal do sistema.
+10. No editor: `Ctrl+Space` abre o autocomplete do clangd, `F2` vai para a definição, passar o mouse mostra a documentação e erros aparecem sublinhados.
 11. Também é possível abrir um projeto direto: `CppVisualIDE.exe "C:\caminho\project.json"`.
 
 ## Variáveis em runtime

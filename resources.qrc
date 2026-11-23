@@ -24,6 +24,5 @@
     </qresource>
     <qresource prefix="/themes">
         <file alias="dark.qss">themes/dark.qss</file>
-        <file alias="light.qss">themes/light.qss</file>
     </qresource>
 </RCC>
